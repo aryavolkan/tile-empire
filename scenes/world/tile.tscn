@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[node name="Tile" type="Node2D"]
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+
+[node name="SelectionHighlight" type="Sprite2D" parent="."]
+visible = false
+
+[node name="TerritoryBorder" type="Line2D" parent="."]
+width = 2.0
+default_color = Color(1, 1, 1, 0.5)
