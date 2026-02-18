@@ -247,7 +247,7 @@ def evaluate_genome(genome, config, worker_id):
             "--worker-id", worker_id
         ]
         
-        if config.get('disable_cpu', False):
+        if hasattr(config, 'disable_cpu') and config.disable_cpu:
             cmd.append("--disable-cpu")
         else:
             cmd.extend(["--cpu-difficulty", config.cpu_difficulty])
@@ -429,6 +429,9 @@ def main():
             def __init__(self, d):
                 for k, v in d.items():
                     setattr(self, k, v)
+            
+            def get(self, key, default=None):
+                return getattr(self, key, default)
         
         neat = TileEmpireNEAT(Config(test_config))
         
