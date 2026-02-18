@@ -1,0 +1,99 @@
+program: overnight-agent/overnight_evolve.py
+method: bayes
+metric:
+  name: best_aggregate_fitness
+  goal: maximize
+
+parameters:
+  # NEAT parameters
+  population_size:
+    values: [50, 100, 150]
+  
+  compatibility_threshold:
+    distribution: uniform
+    min: 2.0
+    max: 6.0
+  
+  c1:
+    value: 1.0  # Excess coefficient
+  
+  c2:
+    value: 1.0  # Disjoint coefficient
+  
+  c3:
+    distribution: uniform
+    min: 0.2
+    max: 1.0  # Weight coefficient
+  
+  # Mutation rates
+  weight_mutation_rate:
+    distribution: uniform
+    min: 0.6
+    max: 0.9
+  
+  weight_mutation_power:
+    distribution: uniform
+    min: 0.5
+    max: 2.5
+  
+  add_node_rate:
+    distribution: uniform
+    min: 0.01
+    max: 0.05
+  
+  add_connection_rate:
+    distribution: uniform
+    min: 0.02
+    max: 0.1
+  
+  # Selection
+  survival_threshold:
+    distribution: uniform
+    min: 0.1
+    max: 0.3
+  
+  elite_count:
+    values: [2, 5, 10]
+  
+  # Episode parameters
+  max_episode_ticks:
+    values: [1800, 3000, 6000]  # 30s, 50s, 100s at 60 FPS
+  
+  action_interval:
+    values: [20, 30, 60]  # AI acts every N ticks
+  
+  map_size:
+    values: ['small', 'medium']
+  
+  cpu_difficulty:
+    values: ['easy', 'medium', 'hard']
+  
+  # Multi-objective weights (for fitness aggregation)
+  territory_weight:
+    distribution: uniform
+    min: 0.3
+    max: 0.5
+  
+  progression_weight:
+    distribution: uniform
+    min: 0.3
+    max: 0.5
+  
+  survival_weight:
+    distribution: uniform
+    min: 0.1
+    max: 0.3
+  
+  # Training settings
+  max_generations:
+    value: 100
+  
+  eval_episodes:
+    values: [1, 2, 3]  # Episodes to average per genome
+
+# Early stopping
+early_terminate:
+  type: hyperband
+  s: 2
+  eta: 3
+  max_iter: 100

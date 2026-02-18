@@ -7,26 +7,45 @@ var territory_manager_script = preload("res://scripts/systems/territory_manager.
 var skill_tree_script = preload("res://scripts/systems/skill_tree.gd")
 var progression_script = preload("res://scripts/systems/progression.gd")
 var multiplayer_manager_script = preload("res://scripts/networking/multiplayer_manager.gd")
+var training_manager_script = preload("res://training_manager.gd")
 
 var tile_map: TileMap
 var territory_manager: TerritoryManager
 var skill_tree: SkillTree
 var progression_system: ProgressionSystem
 var multiplayer_manager: MultiplayerManager
+var training_manager: TrainingManager
 
 var camera: Camera2D
+var is_training_mode: bool = false
 
 func _ready() -> void:
+	# Check if in training mode
+	_check_training_mode()
+	
 	# Initialize core systems
 	_setup_map()
 	_setup_systems()
-	_setup_camera()
 	
-	# Connect signals
-	tile_map.tile_clicked.connect(_on_tile_clicked)
-	territory_manager.territory_expanded.connect(_on_territory_expanded)
-	skill_tree.skill_unlocked.connect(_on_skill_unlocked)
-	progression_system.empire_stage_changed.connect(_on_empire_stage_changed)
+	if not is_training_mode:
+		_setup_camera()
+		
+		# Connect signals for normal gameplay
+		tile_map.tile_clicked.connect(_on_tile_clicked)
+		territory_manager.territory_expanded.connect(_on_territory_expanded)
+		skill_tree.skill_unlocked.connect(_on_skill_unlocked)
+		progression_system.empire_stage_changed.connect(_on_empire_stage_changed)
+	else:
+		# Training mode setup
+		_setup_training()
+
+func _check_training_mode() -> void:
+	# Check command line args for training flag
+	var args = OS.get_cmdline_args()
+	for arg in args:
+		if arg == "--training" or arg == "--auto-train":
+			is_training_mode = true
+			break
 
 func _setup_map() -> void:
 	tile_map = tile_map_script.new()
@@ -90,3 +109,99 @@ func _on_skill_unlocked(skill_id: String, player_id: int) -> void:
 
 func _on_empire_stage_changed(player_id: int, new_stage: int) -> void:
 	print("Player ", player_id, " advanced to empire stage: ", new_stage)
+
+func _setup_training() -> void:
+	# Create training manager
+	training_manager = training_manager_script.new()
+	add_child(training_manager)
+	training_manager.game_manager = self
+	training_manager.world_generator = tile_map
+	
+	# Disable unnecessary visuals in training mode
+	if training_manager.is_headless:
+		RenderingServer.render_loop_enabled = false
+
+# === Public methods for training/AI access ===
+
+func get_total_tiles() -> int:
+	if tile_map:
+		return tile_map.get_total_tiles()
+	return 0
+
+func get_valid_spawn_positions() -> Array:
+	if tile_map:
+		return tile_map.get_valid_spawn_positions()
+	return []
+
+func create_settlement(position: Vector2, player_id: int) -> Node:
+	# Create and return a settlement node
+	var settlement = preload("res://scripts/entities/settlement.gd").new()
+	settlement.position = position
+	settlement.player_id = player_id
+	add_child(settlement)
+	
+	# Register with territory manager
+	if territory_manager:
+		territory_manager.register_settlement(settlement, player_id)
+	
+	return settlement
+
+func set_random_seed(seed_value: int) -> void:
+	seed(seed_value)
+	if tile_map:
+		tile_map.set_seed(seed_value)
+
+func set_map_size(size: String) -> void:
+	if tile_map:
+		match size:
+			"small":
+				tile_map.map_width = 30
+				tile_map.map_height = 30
+			"medium":
+				tile_map.map_width = 50
+				tile_map.map_height = 50
+			"large":
+				tile_map.map_width = 70
+				tile_map.map_height = 70
+
+func generate_world() -> void:
+	if tile_map:
+		tile_map.generate()
+
+func get_tiles_in_radius(center: Vector2, radius: int) -> Array:
+	if tile_map:
+		return tile_map.get_tiles_in_radius(center, radius)
+	return []
+
+func get_nearest_enemy(player_id: int) -> Node:
+	# Find nearest enemy settlement
+	var min_distance = INF
+	var nearest = null
+	
+	for child in get_children():
+		if child.has_method("get_player_id") and child.get_player_id() != player_id:
+			var dist = child.position.distance_to(get_player_position(player_id))
+			if dist < min_distance:
+				min_distance = dist
+				nearest = child
+	
+	return nearest
+
+func get_player_position(player_id: int) -> Vector2:
+	# Get position of player's main settlement
+	for child in get_children():
+		if child.has_method("get_player_id") and child.get_player_id() == player_id:
+			return child.position
+	return Vector2.ZERO
+
+func get_domination_progress(player_id: int) -> float:
+	if territory_manager:
+		var owned_tiles = territory_manager.get_territory_size(player_id)
+		var total_tiles = get_total_tiles()
+		return float(owned_tiles) / float(total_tiles) if total_tiles > 0 else 0.0
+	return 0.0
+
+func get_culture_score(player_id: int) -> float:
+	if progression_system:
+		return progression_system.get_culture_score(player_id)
+	return 0.0

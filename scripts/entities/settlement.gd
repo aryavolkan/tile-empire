@@ -298,3 +298,156 @@ func get_defense_strength() -> float:
 	base_defense *= tile.get_defense_bonus()
 	
 	return base_defense
+
+# === AI Support Methods ===
+
+var player_id: int = -1  # Player/AI identifier
+var food: int = 100
+var wood: int = 50
+var stone: int = 50
+var gold: int = 20
+var iron: int = 0
+var food_rate: float = 2.0
+var production_rate: float = 1.0
+var gold_rate: float = 1.0
+var research_rate: float = 0.0
+var ai_controller: Node = null
+var ai_difficulty: String = "easy"
+
+func set_ai_difficulty(difficulty: String) -> void:
+	ai_difficulty = difficulty
+	if not ai_controller:
+		ai_controller = preload("res://scripts/ai/cpu_opponent.gd").new()
+		add_child(ai_controller)
+		ai_controller.initialize(self, player_id, difficulty)
+
+func get_player_id() -> int:
+	return player_id
+
+func is_destroyed() -> bool:
+	return population <= 0
+
+func can_spawn_unit(unit_type: String) -> bool:
+	match unit_type:
+		"settler":
+			return population > 5 and food >= 100 and production >= 100
+		"warrior":
+			return "barracks" in buildings and production >= 50
+		"worker":
+			return food >= 30
+		"archer":
+			return "barracks" in buildings and production >= 60 and wood >= 30
+		_:
+			return false
+
+func spawn_unit(unit_type: String) -> bool:
+	if not can_spawn_unit(unit_type):
+		return false
+	
+	# Deduct costs
+	match unit_type:
+		"settler":
+			food -= 100
+			production -= 100
+			population -= 1
+		"warrior":
+			production -= 50
+		"worker":
+			food -= 30
+		"archer":
+			production -= 60
+			wood -= 30
+	
+	# Create unit (simplified - would actually spawn unit entity)
+	print("Settlement ", settlement_name, " spawned ", unit_type)
+	return true
+
+func can_upgrade() -> bool:
+	if stage >= SettlementStage.EMPIRE:
+		return false
+	
+	var next_stage = stage + 1
+	var requirements = STAGE_REQUIREMENTS[next_stage]
+	
+	# Check all requirements
+	if population < requirements.population:
+		return false
+		
+	for required_building in requirements.buildings:
+		if not required_building in buildings:
+			return false
+	
+	# Check resources
+	var upgrade_cost = 100 * (1 + int(stage))
+	return production >= upgrade_cost
+
+func upgrade() -> bool:
+	if not can_upgrade():
+		return false
+		
+	var upgrade_cost = 100 * (1 + int(stage))
+	production -= upgrade_cost
+	
+	_upgrade_settlement()
+	return true
+
+func get_building_count(building_type: String) -> int:
+	return buildings.count(building_type)
+
+func can_build_structure(structure_type: String) -> bool:
+	if structure_type in buildings:
+		return false
+		
+	match structure_type:
+		"granary":
+			return wood >= 50
+		"barracks":
+			return wood >= 60 and stone >= 40
+		"marketplace":
+			return wood >= 80 and gold >= 50
+		"library":
+			return "marketplace" in buildings and stone >= 100
+		_:
+			return false
+
+func build_structure(structure_type: String) -> bool:
+	if not can_build_structure(structure_type):
+		return false
+		
+	# Deduct costs
+	match structure_type:
+		"granary":
+			wood -= 50
+		"barracks":
+			wood -= 60
+			stone -= 40
+		"marketplace":
+			wood -= 80
+			gold -= 50
+		"library":
+			stone -= 100
+	
+	buildings.append(structure_type)
+	_update_yields()
+	print("Settlement ", settlement_name, " built ", structure_type)
+	return true
+
+func set_worker_priority(priority: String) -> void:
+	# Adjust worker behavior based on priority
+	print("Settlement ", settlement_name, " set worker priority to ", priority)
+
+func get_garrison_strength() -> float:
+	# Simplified garrison calculation
+	return get_defense_strength()
+
+func get_defensive_building_count() -> int:
+	var count = 0
+	if "barracks" in buildings:
+		count += 1
+	# Add walls, towers, etc. when implemented
+	return count
+
+# Resource properties for direct access
+var production: int = 50:
+	get:
+		return int(production_rate * 10)  # Simplified calculation

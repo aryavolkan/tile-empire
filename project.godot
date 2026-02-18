@@ -82,3 +82,11 @@ limits/packet_peer_stream/max_buffer_po2=20
 
 renderer/rendering_method="forward_plus"
 textures/canvas_textures/default_texture_filter=0
+
+[autoload]
+
+GameManager="*res://scripts/main.gd"
+
+[gdextension]
+
+evolve_native="res://rust/evolve-native.gdextension"

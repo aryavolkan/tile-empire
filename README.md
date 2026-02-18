@@ -169,6 +169,100 @@ This allows for:
 - AI vs AI tournaments
 - Human vs AI challenges
 
+## AI Training
+
+Tile Empire now supports training neuroevolution AI agents using NEAT + NSGA-2, powered by the same system as the [evolve](https://github.com/aryavolkan/evolve) project.
+
+### Quick Start
+
+1. **Install dependencies**:
+   ```bash
+   # Use the wandb-worker virtual environment
+   source ~/.venv/wandb-worker/bin/activate
+   pip install wandb
+   ```
+
+2. **Test single training episode**:
+   ```bash
+   cd ~/projects/tile-empire
+   python overnight-agent/overnight_evolve.py
+   ```
+
+3. **Create a W&B sweep**:
+   ```bash
+   python overnight-agent/overnight_evolve.py sweep
+   # Outputs: Created sweep: <SWEEP_ID>
+   ```
+
+4. **Run training workers**:
+   ```bash
+   # In separate terminals/tmux panes:
+   python overnight-agent/overnight_evolve.py agent <SWEEP_ID>
+   ```
+
+5. **Monitor progress** at [wandb.ai](https://wandb.ai/)
+
+### Architecture
+
+- **Observation Space** (93 inputs):
+  - Own state: territory, resources, settlement stage, buildings
+  - Nearby tiles: terrain, ownership, resources (5-tile radius)
+  - Military: unit counts, strength, defenses
+  - Tech progress: unlocked technologies, research status
+  - Enemy info: distance, relative strength
+  - Victory progress: domination %, culture score
+
+- **Action Space** (13 discrete actions):
+  - Territory expansion
+  - Unit spawning (settler, warrior, worker)
+  - Settlement upgrading
+  - Technology research
+  - Military movements (aggressive/defensive)
+  - Building construction
+  - Resource focus
+
+- **Fitness Function** (Multi-objective NSGA-2):
+  - Territory control (tiles owned / total tiles)
+  - Progression (settlement stage, buildings, tech, culture)
+  - Survival (episode duration)
+
+### Training Configuration
+
+Edit `sweeps/tile_empire_sweep.yaml` to adjust:
+- Population size (50-150)
+- Episode length (30s-100s)
+- Map size (small/medium)
+- CPU opponent difficulty
+- NEAT mutation rates
+- Multi-objective weights
+
+### Headless Training
+
+Training runs Godot in headless mode by default. Each worker:
+1. Loads a NEAT genome from JSON
+2. Initializes a game world with AI agent
+3. Runs episode for N ticks
+4. Writes fitness metrics to JSON
+5. Python aggregates results and evolves population
+
+### Using Trained Models
+
+Best genomes are saved to `~/.local/share/godot/app_userdata/TileEmpire/`:
+- `best_population_gen{N}.json` - Best population at generation N
+- `final_population.json` - Final evolved population
+
+To play against a trained AI:
+```gdscript
+# Load in Godot
+var genome = load_genome_from_json("path/to/genome.json")
+var nn = NeuralNetwork.new()
+nn.from_genome(genome)
+
+# Use in game
+var ai_controller = AIController.new()
+ai_controller.neural_network = nn
+```
+
 ## Contributing
 
 Feel free to open issues or submit PRs! Areas where help is welcome:
