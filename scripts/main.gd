@@ -167,11 +167,10 @@ func _setup_players() -> void:
 	_update_scoreboard()
 	_start_ai_loop()
 
-const UNIT_SPEED = 80.0           # pixels per second
-const WARRIOR_MOVE_INTERVAL = 0.8 # seconds between warrior tile hops
-const TANK_MOVE_INTERVAL = 1.6    # tanks are slower but tougher
+const WARRIOR_SPEED = 90.0   # pixels per second
+const TANK_SPEED = 45.0      # tanks move at half warrior speed
 
-var unit_move_timers: Dictionary = {}  # unit -> float elapsed
+var unit_target_tile: Dictionary = {}  # unit -> Tile (next destination)
 
 func _process(delta: float) -> void:
 	# Camera pan
@@ -341,6 +340,51 @@ func _spawn_starting_units() -> void:
 		_do_spawn_unit(units_container, spawn_tile, pid, 1)  # WARRIOR
 		_do_spawn_unit(units_container, spawn_tile, pid, 6)  # TANK
 
+func _pick_next_tile(unit: Node, pid: int, is_tank: bool) -> Tile:
+	var neighbors = tile_map.get_neighbors(unit.current_tile)
+	var best_tile: Tile = null
+	var best_priority = -1
+	if is_tank:
+		for t in neighbors:
+			if t == null or t.type == Tile.TileType.WATER:
+				continue
+			if _tile_has_enemy_unit(t, pid):
+				continue
+			var priority = 0
+			var near_enemy = false
+			for nb in tile_map.get_neighbors(t):
+				if nb.owner_id != pid and nb.owner_id != -1:
+					near_enemy = true
+					break
+			if t.owner_id == pid and near_enemy:
+				priority = 4
+			elif t.owner_id != pid and t.owner_id != -1:
+				priority = 3
+			elif t.owner_id == -1:
+				priority = 2
+			else:
+				priority = 1
+			if priority > best_priority:
+				best_priority = priority
+				best_tile = t
+	else:
+		for t in neighbors:
+			if t == null or t.type == Tile.TileType.WATER:
+				continue
+			if _tile_has_enemy_unit(t, pid):
+				continue
+			var priority = 0
+			if t.owner_id != -1 and t.owner_id != pid:
+				priority = 3
+			elif t.owner_id == -1:
+				priority = 2
+			else:
+				priority = 1
+			if priority > best_priority:
+				best_priority = priority
+				best_tile = t
+	return best_tile
+
 func _process_units(delta: float) -> void:
 	var redraw_needed = false
 	for pid in player_ids_active:
@@ -348,75 +392,32 @@ func _process_units(delta: float) -> void:
 		for unit in units:
 			if not is_instance_valid(unit) or unit.current_tile == null:
 				continue
+			var is_tank = (unit.unit_type == 6)
+			var speed = TANK_SPEED if is_tank else WARRIOR_SPEED
 
-			var is_tank = (unit.unit_type == 6)  # UnitType.TANK
-			var move_interval = TANK_MOVE_INTERVAL if is_tank else WARRIOR_MOVE_INTERVAL
-
-			# Accumulate time
-			var elapsed = unit_move_timers.get(unit, 0.0) + delta
-			unit_move_timers[unit] = elapsed
-
-			# Smooth pixel movement toward current tile center
-			var target_pos = tile_map.grid_to_world(unit.current_tile.grid_position)
+			# Get or pick target tile
+			var target_tile: Tile = unit_target_tile.get(unit, unit.current_tile)
+			if target_tile == null:
+				target_tile = unit.current_tile
+			var target_pos = tile_map.grid_to_world(target_tile.grid_position)
 			var dist = unit.position.distance_to(target_pos)
-			if dist > 2.0:
-				unit.position = unit.position.move_toward(target_pos, UNIT_SPEED * delta)
+
+			if dist > 3.0:
+				# Still travelling — glide smoothly
+				unit.position = unit.position.move_toward(target_pos, speed * delta)
 				redraw_needed = true
-
-			# Hop to next tile on interval
-			if elapsed >= move_interval:
-				unit_move_timers[unit] = 0.0
-				var neighbors = tile_map.get_neighbors(unit.current_tile)
-				var best_tile: Tile = null
-				var best_priority = -1
-
-				if is_tank:
-					# Tank: defend border — move toward threatened own tiles or enemy-adjacent tiles
-					for t in neighbors:
-						if t == null or t.type == Tile.TileType.WATER:
-							continue
-						if _tile_has_enemy_unit(t, pid):
-							continue
-						var priority = 0
-						# Prefer border tiles (own tiles adjacent to enemy)
-						var near_enemy = false
-						for nb in tile_map.get_neighbors(t):
-							if nb.owner_id != pid and nb.owner_id != -1:
-								near_enemy = true
-								break
-						if t.owner_id == pid and near_enemy:
-							priority = 4  # own border — defend!
-						elif t.owner_id != pid and t.owner_id != -1:
-							priority = 3  # enemy tile adjacent — push back
-						elif t.owner_id == -1:
-							priority = 2  # unclaimed near border
-						else:
-							priority = 1
-						if priority > best_priority:
-							best_priority = priority
-							best_tile = t
-				else:
-					# Warrior: aggressive — push into enemy/unclaimed territory
-					for t in neighbors:
-						if t == null or t.type == Tile.TileType.WATER:
-							continue
-						if _tile_has_enemy_unit(t, pid):
-							continue
-						var priority = 0
-						if t.owner_id != -1 and t.owner_id != pid:
-							priority = 3
-						elif t.owner_id == -1:
-							priority = 2
-						else:
-							priority = 1
-						if priority > best_priority:
-							best_priority = priority
-							best_tile = t
-
-				if best_tile and best_tile != unit.current_tile:
-					unit.current_tile = best_tile
-					territory_manager.conquer_tile(best_tile, pid)
+			else:
+				# Arrived — snap, claim, pick next
+				unit.position = target_pos
+				if target_tile != unit.current_tile:
+					unit.current_tile = target_tile
+					territory_manager.conquer_tile(target_tile, pid)
 					redraw_needed = true
+				var next = _pick_next_tile(unit, pid, is_tank)
+				if next and next != unit.current_tile:
+					unit_target_tile[unit] = next
+				else:
+					unit_target_tile[unit] = unit.current_tile
 
 	if redraw_needed:
 		tile_map.queue_redraw()

@@ -206,17 +206,36 @@ func _draw() -> void:
 					var center = unit.position
 					if unit.current_tile:
 						center = grid_to_world(unit.current_tile.grid_position)
-					var tri_size = hex_size * 0.55
-					var triangle = PackedVector2Array([
-						center + Vector2(0, -tri_size),
-						center + Vector2(tri_size, tri_size),
-						center + Vector2(-tri_size, tri_size),
-					])
 					var unit_color = _get_player_color(unit.owner_id)
-					draw_polygon(triangle, PackedColorArray([unit_color]))
-					var tri_border = PackedVector2Array(triangle)
-					tri_border.append(triangle[0])
-					draw_polyline(tri_border, Color.BLACK, 2.0, true)
+					var is_tank = (unit.unit_type == 6)  # UnitType.TANK
+					if is_tank:
+						# Tank: bold square/diamond rotated 45°
+						var s = hex_size * 0.52
+						var sq = PackedVector2Array([
+							center + Vector2(0, -s),
+							center + Vector2(s, 0),
+							center + Vector2(0, s),
+							center + Vector2(-s, 0),
+						])
+						draw_polygon(sq, PackedColorArray([unit_color]))
+						var sq_b = PackedVector2Array(sq)
+						sq_b.append(sq[0])
+						draw_polyline(sq_b, Color.BLACK, 3.0, true)
+						# Inner cross to indicate armour
+						draw_line(center + Vector2(-s * 0.5, 0), center + Vector2(s * 0.5, 0), Color.BLACK, 1.5)
+						draw_line(center + Vector2(0, -s * 0.5), center + Vector2(0, s * 0.5), Color.BLACK, 1.5)
+					else:
+						# Warrior: upward triangle
+						var tri_size = hex_size * 0.50
+						var triangle = PackedVector2Array([
+							center + Vector2(0, -tri_size),
+							center + Vector2(tri_size, tri_size * 0.85),
+							center + Vector2(-tri_size, tri_size * 0.85),
+						])
+						draw_polygon(triangle, PackedColorArray([unit_color]))
+						var tri_border = PackedVector2Array(triangle)
+						tri_border.append(triangle[0])
+						draw_polyline(tri_border, Color.BLACK, 2.0, true)
 
 func grid_to_world(grid_pos: Vector2i) -> Vector2:
 	# Convert hex grid coordinates to world position (pointy-top, odd-r)
