@@ -1,9 +1,17 @@
 extends RefCounted
 
-## A neural network with evolvable weights and optional Elman recurrent memory.
+## Tile Empire's neural network with evolvable weights and optional Elman recurrent memory.
 ## Architecture: inputs -> hidden (tanh) -> outputs (tanh)
 ## When use_memory is true, previous hidden state feeds back into hidden layer
 ## via context weights, enabling temporal sequence learning (Elman network).
+##
+## NOTE: This is intentionally a SEPARATE copy from evolve-core/ai/recurrent_network.gd.
+## Reasons this local copy must stay:
+## 1. Game-specific save/load: save_to_file/load_from_file with binary format + JSON NEAT genome loading
+## 2. Custom weight initialization: sqrt(8.0/N) instead of sqrt(2.0/N) for sparse tile-empire inputs
+## 3. crossover_with() uses two-point crossover tuned for this game
+## 4. load_from_file references res://ai/neat_network.gd and res://ai/neat_genome.gd (game-specific)
+## See evolve-core/ai/recurrent_network.gd for the generic reusable version.
 
 var input_size: int
 var hidden_size: int

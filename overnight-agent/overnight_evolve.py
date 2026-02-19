@@ -19,8 +19,8 @@ sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
 # Paths
-GODOT_PATH = os.environ.get("GODOT_PATH", "/usr/local/bin/godot")
-PROJECT_PATH = os.environ.get("TILE_EMPIRE_PATH", os.path.expanduser("~/projects/tile-empire"))
+GODOT_PATH = os.environ.get("GODOT_PATH", "/Applications/Godot.app/Contents/MacOS/Godot")
+PROJECT_PATH = os.environ.get("TILE_EMPIRE_PATH", os.path.expanduser("~/Projects/tile-empire"))
 GODOT_USER_DIR = os.environ.get("GODOT_USER_DIR", os.path.expanduser("~/.local/share/godot/app_userdata/TileEmpire"))
 
 # Generate unique worker ID

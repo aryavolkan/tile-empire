@@ -2,6 +2,19 @@ class_name HexTileMap
 extends Node2D
 
 ## Manages the hex-based tile grid
+## Uses Rust HexMath GDExtension for performance-critical hex calculations
+## when available, with GDScript fallback.
+
+# Rust HexMath singleton (null if native lib not loaded)
+static var _hex_math: RefCounted = null
+static var _hex_math_checked: bool = false
+
+static func _get_hex_math():
+	if not _hex_math_checked:
+		_hex_math_checked = true
+		if ClassDB.class_exists(&"HexMath"):
+			_hex_math = ClassDB.instantiate(&"HexMath")
+	return _hex_math
 
 signal tile_clicked(tile: Tile)
 signal tile_hovered(tile: Tile)
@@ -208,6 +221,10 @@ func get_valid_spawn_positions() -> Array:
 	return valid
 
 func get_distance(from: Vector2i, to: Vector2i) -> int:
+	var hm = _get_hex_math()
+	if hm:
+		return hm.hex_distance(from, to)
+	# GDScript fallback
 	var a = offset_to_axial(from)
 	var b = offset_to_axial(to)
 	return int((abs(a.x - b.x) + abs(a.x + a.y - b.x - b.y) + abs(a.y - b.y)) / 2)
@@ -254,7 +271,27 @@ func _input(event: InputEvent) -> void:
 			tile_clicked.emit(tile)
 
 func find_path(from: Vector2i, to: Vector2i, unit_type: String = "") -> Array[Vector2i]:
-	# A* pathfinding for hex grid
+	# Try Rust A* first (much faster for large maps)
+	var hm = _get_hex_math()
+	if hm:
+		var blocked: Array[Vector2i] = []
+		var costs: Dictionary = {}  # Vector2i -> float
+		for pos in tiles:
+			var t: Tile = tiles[pos]
+			var mc = t.get_movement_cost()
+			if mc < 0:
+				blocked.append(pos)
+			elif mc != 1.0:
+				costs[pos] = float(mc)
+		var max_dist := max(map_width, map_height) * 2
+		var result = hm.find_path(from, to, blocked, costs, max_dist)
+		# Convert to typed array
+		var typed: Array[Vector2i] = []
+		for p in result:
+			typed.append(p)
+		return typed
+
+	# GDScript fallback A*
 	var open_set = PriorityQueue.new()
 	var came_from = {}
 	var g_score = {from: 0}

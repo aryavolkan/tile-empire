@@ -28,6 +28,11 @@ func _init():
 	_run_progression_tests()
 	_run_ai_observation_tests()
 	_run_ai_action_space_tests()
+	_run_rust_hexmath_tests()
+	_run_scene_loading_tests()
+	_run_training_pipeline_smoke_tests()
+	_run_recurrent_network_tests()
+	_run_hexmap_rust_integration_tests()
 	
 	print("\n============================================")
 	print("Results: %d passed, %d failed, %d total" % [_tests_passed, _tests_failed, _tests_total])
@@ -874,3 +879,302 @@ const STRATEGY_WEIGHTS = {
 		"economy": 0.25, "military": 0.10, "tech": 0.10
 	}
 }
+
+# ==================== Rust HexMath Tests ====================
+
+func _run_rust_hexmath_tests() -> void:
+	_suite("Rust HexMath")
+	
+	var has_rust := ClassDB.class_exists(&"HexMath")
+	_assert(true, "HexMath class check completed (available: %s)" % str(has_rust))
+	
+	if not has_rust:
+		print("  SKIP: HexMath native class not loaded — skipping Rust tests")
+		return
+	
+	var hm = ClassDB.instantiate(&"HexMath")
+	_assert(hm != null, "HexMath instantiation")
+	
+	# Distance tests
+	_assert_eq(hm.hex_distance(Vector2i(0, 0), Vector2i(0, 0)), 0, "Rust hex_distance same tile")
+	_assert_eq(hm.hex_distance(Vector2i(0, 0), Vector2i(1, 0)), 1, "Rust hex_distance adjacent")
+	_assert_eq(hm.hex_distance(Vector2i(0, 0), Vector2i(2, 0)), 2, "Rust hex_distance two apart")
+	_assert_eq(hm.hex_distance(Vector2i(0, 0), Vector2i(0, 3)), 3, "Rust hex_distance vertical")
+	
+	# Symmetry
+	var d1 = hm.hex_distance(Vector2i(2, 3), Vector2i(5, 7))
+	var d2 = hm.hex_distance(Vector2i(5, 7), Vector2i(2, 3))
+	_assert_eq(d1, d2, "Rust hex_distance symmetry")
+	
+	# Neighbors
+	var n0 = hm.hex_neighbors(Vector2i(0, 0))
+	_assert_eq(n0.size(), 6, "Rust hex_neighbors returns 6 neighbors")
+	
+	var n1 = hm.hex_neighbors(Vector2i(1, 1))
+	_assert_eq(n1.size(), 6, "Rust hex_neighbors odd col returns 6")
+	
+	# All neighbors should be distance 1
+	for neighbor in n0:
+		_assert_eq(hm.hex_distance(Vector2i(0, 0), neighbor), 1, "Rust neighbor at distance 1: %s" % str(neighbor))
+	
+	for neighbor in n1:
+		_assert_eq(hm.hex_distance(Vector2i(1, 1), neighbor), 1, "Rust odd-col neighbor at distance 1: %s" % str(neighbor))
+	
+	# Pathfinding - simple path
+	var blocked: Array[Vector2i] = []
+	var costs: Dictionary = {}
+	var path = hm.find_path(Vector2i(0, 0), Vector2i(3, 0), blocked, costs, 50)
+	_assert(path.size() > 0, "Rust find_path finds a path")
+	_assert_eq(path[0], Vector2i(0, 0), "Rust find_path starts at origin")
+	_assert_eq(path[path.size() - 1], Vector2i(3, 0), "Rust find_path ends at destination")
+	
+	# Pathfinding with blocked tiles
+	var blocked2: Array[Vector2i] = [Vector2i(1, 0), Vector2i(0, 1)]
+	var path2 = hm.find_path(Vector2i(0, 0), Vector2i(2, 0), blocked2, costs, 50)
+	_assert(path2.size() > 0, "Rust find_path routes around blocked tiles")
+	for pos in path2:
+		_assert(pos != Vector2i(1, 0), "Rust path avoids blocked tile (1,0)")
+	
+	# Pathfinding - blocked destination returns empty
+	var blocked3: Array[Vector2i] = [Vector2i(3, 3)]
+	var path3 = hm.find_path(Vector2i(0, 0), Vector2i(3, 3), blocked3, costs, 50)
+	_assert_eq(path3.size(), 0, "Rust find_path returns empty for blocked destination")
+	
+	# Pathfinding - same start and end
+	var path4 = hm.find_path(Vector2i(2, 2), Vector2i(2, 2), blocked, costs, 50)
+	_assert(path4.size() >= 1, "Rust find_path handles same start/end")
+
+# ==================== Rust HexMath vs GDScript Consistency ====================
+
+func _run_hexmap_rust_integration_tests() -> void:
+	_suite("HexMap Rust Integration")
+	
+	var tm = HexTileMap.new()
+	tm.map_width = 10
+	tm.map_height = 10
+	
+	# Test get_distance uses consistent results regardless of backend
+	# (We can't force backend, but we can verify correctness)
+	_assert_eq(tm.get_distance(Vector2i(0, 0), Vector2i(0, 0)), 0, "HexTileMap distance same")
+	_assert_eq(tm.get_distance(Vector2i(0, 0), Vector2i(1, 0)), 1, "HexTileMap distance adjacent")
+	_assert_eq(tm.get_distance(Vector2i(0, 0), Vector2i(0, 3)), 3, "HexTileMap distance vertical")
+	
+	# Symmetry check
+	var d1 = tm.get_distance(Vector2i(3, 4), Vector2i(7, 2))
+	var d2 = tm.get_distance(Vector2i(7, 2), Vector2i(3, 4))
+	_assert_eq(d1, d2, "HexTileMap distance symmetry")
+	
+	# Triangle inequality
+	var a = Vector2i(0, 0)
+	var b = Vector2i(3, 2)
+	var c = Vector2i(5, 5)
+	_assert(tm.get_distance(a, c) <= tm.get_distance(a, b) + tm.get_distance(b, c), "Triangle inequality")
+	
+	# Verify Rust backend is being used (if available)
+	var has_rust = ClassDB.class_exists(&"HexMath")
+	_assert(true, "HexTileMap using %s backend" % ("Rust" if has_rust else "GDScript"))
+	
+	# Cross-validate: if Rust is available, check both backends agree
+	if has_rust:
+		var hm = ClassDB.instantiate(&"HexMath")
+		var test_pairs = [
+			[Vector2i(0, 0), Vector2i(5, 5)],
+			[Vector2i(3, 7), Vector2i(8, 2)],
+			[Vector2i(1, 1), Vector2i(1, 1)],
+			[Vector2i(0, 0), Vector2i(9, 9)],
+		]
+		for pair in test_pairs:
+			var rust_d = hm.hex_distance(pair[0], pair[1])
+			# Compute GDScript distance manually
+			var ax = tm.offset_to_axial(pair[0])
+			var bx = tm.offset_to_axial(pair[1])
+			var gd_d = int((abs(ax.x - bx.x) + abs(ax.x + ax.y - bx.x - bx.y) + abs(ax.y - bx.y)) / 2)
+			_assert_eq(rust_d, gd_d, "Rust vs GDScript distance for %s->%s" % [str(pair[0]), str(pair[1])])
+
+# ==================== Scene Loading Tests ====================
+
+func _run_scene_loading_tests() -> void:
+	_suite("Scene Loading")
+	
+	# Test main scene loads
+	var main_scene = load("res://scenes/main.tscn")
+	_assert(main_scene != null, "main.tscn loads successfully")
+	_assert(main_scene is PackedScene, "main.tscn is a PackedScene")
+	
+	# Test tile scene loads
+	var tile_scene = load("res://scenes/world/tile.tscn")
+	_assert(tile_scene != null, "tile.tscn loads successfully")
+	_assert(tile_scene is PackedScene, "tile.tscn is a PackedScene")
+	
+	# Verify main scene can be instantiated
+	if main_scene:
+		var instance = main_scene.instantiate()
+		_assert(instance != null, "main.tscn instantiates")
+		_assert(instance.has_node("World"), "main scene has World node")
+		_assert(instance.has_node("World/TileMap"), "main scene has TileMap node")
+		_assert(instance.has_node("UI"), "main scene has UI node")
+		_assert(instance.has_node("UI/HUD"), "main scene has HUD node")
+		instance.free()
+	
+	# Verify tile scene can be instantiated
+	if tile_scene:
+		var instance = tile_scene.instantiate()
+		_assert(instance != null, "tile.tscn instantiates")
+		_assert(instance.has_node("Sprite2D"), "tile has Sprite2D")
+		_assert(instance.has_node("SelectionHighlight"), "tile has SelectionHighlight")
+		_assert(instance.has_node("TerritoryBorder"), "tile has TerritoryBorder")
+		instance.free()
+	
+	# Verify all scripts referenced by scenes exist
+	_assert(ResourceLoader.exists("res://scripts/main.gd"), "main.gd exists")
+	_assert(ResourceLoader.exists("res://scripts/world/tile_map.gd"), "tile_map.gd exists")
+	_assert(ResourceLoader.exists("res://scripts/world/tile.gd"), "tile.gd exists")
+
+# ==================== Training Pipeline Smoke Tests ====================
+
+func _run_training_pipeline_smoke_tests() -> void:
+	_suite("Training Pipeline Smoke")
+	
+	# Verify training manager script loads
+	var tm_script = load("res://scripts/training_manager.gd")
+	_assert(tm_script != null, "training_manager.gd loads")
+	
+	# Verify AI scripts load
+	var scripts_to_check = [
+		"res://scripts/ai/neural_network.gd",
+		"res://scripts/ai/ai_controller.gd",
+		"res://scripts/ai/agent_observer.gd",
+		"res://scripts/ai/agent_actions.gd",
+		"res://scripts/ai/fitness_calculator.gd",
+		"res://scripts/ai/cpu_opponent.gd",
+	]
+	for script_path in scripts_to_check:
+		var s = load(script_path)
+		_assert(s != null, "%s loads" % script_path.get_file())
+	
+	# Verify evolve-core scripts load
+	var evolve_scripts = [
+		"res://evolve-core/ai/neural_network.gd",
+		"res://evolve-core/ai/recurrent_network.gd",
+		"res://evolve-core/genetic/evolution_base.gd",
+		"res://evolve-core/genetic/nsga2.gd",
+	]
+	for script_path in evolve_scripts:
+		_assert(ResourceLoader.exists(script_path), "%s exists" % script_path.get_file())
+	
+	# Verify neural network can be created with tile-empire dimensions
+	var nn = NeuralNetwork.new(64, 32, 8)
+	_assert(nn != null, "NeuralNetwork(64,32,8) creates")
+	_assert_eq(nn.input_size, 64, "NN input size correct")
+	_assert_eq(nn.output_size, 8, "NN output size correct")
+	
+	# Verify forward pass works
+	var inputs = PackedFloat32Array()
+	inputs.resize(64)
+	inputs.fill(0.0)
+	var outputs = nn.forward(inputs)
+	_assert_eq(outputs.size(), 8, "NN forward produces 8 outputs")
+	
+	# Verify memory-enabled network works
+	nn.enable_memory()
+	_assert(nn.use_memory, "Memory enabled")
+	var out1 = nn.forward(inputs)
+	var out2 = nn.forward(inputs)
+	# With memory, same input should (likely) produce different output
+	_assert_eq(out1.size(), 8, "Memory NN forward produces 8 outputs")
+	
+	# Verify fitness calculator
+	var fc = load("res://scripts/ai/fitness_calculator.gd").new()
+	_assert(fc != null, "FitnessCalculator creates")
+	
+	# Sweep config files exist
+	_assert(FileAccess.file_exists("res://sweeps/tile_empire_sweep.yaml"), "sweep config exists")
+	
+	# Training script exists
+	_assert(FileAccess.file_exists("res://overnight-agent/overnight_evolve.py"), "training script exists")
+	_assert(FileAccess.file_exists("res://overnight-agent/start_training.sh"), "start_training.sh exists")
+
+# ==================== Recurrent Network Tests ====================
+
+func _run_recurrent_network_tests() -> void:
+	_suite("Recurrent Network")
+	
+	# Test local neural_network.gd recurrent features
+	var nn = NeuralNetwork.new(16, 8, 4)
+	_assert(not nn.use_memory, "Memory off by default")
+	
+	nn.enable_memory()
+	_assert(nn.use_memory, "Memory enabled")
+	_assert_eq(nn.weights_hh.size(), 8 * 8, "Context weights allocated (8x8)")
+	_assert_eq(nn._prev_hidden.size(), 8, "Previous hidden state allocated")
+	
+	# Forward pass with memory
+	var inputs = PackedFloat32Array()
+	inputs.resize(16)
+	for i in 16:
+		inputs[i] = randf_range(-1.0, 1.0)
+	
+	var out1 = nn.forward(inputs).duplicate()
+	var out2 = nn.forward(inputs).duplicate()
+	# With recurrent connections and non-zero weights, outputs should differ
+	# (hidden state feeds back)
+	var all_same = true
+	for i in 4:
+		if abs(out1[i] - out2[i]) > 1e-6:
+			all_same = false
+			break
+	_assert(not all_same, "Recurrent outputs differ on repeated input")
+	
+	# Reset memory should reset hidden state
+	nn.reset_memory()
+	var out3 = nn.forward(inputs).duplicate()
+	# After reset, should match first output
+	var matches_first = true
+	for i in 4:
+		if abs(out1[i] - out3[i]) > 1e-6:
+			matches_first = false
+			break
+	_assert(matches_first, "Reset memory restores initial behavior")
+	
+	# Weight count includes context weights
+	var base_count = 16 * 8 + 8 + 8 * 4 + 4  # ih + bh + ho + bo
+	var expected_with_memory = base_count + 8 * 8  # + hh
+	_assert_eq(nn.get_weight_count(), expected_with_memory, "Weight count includes memory weights")
+	
+	# Clone preserves memory flag
+	var clone = nn.clone()
+	_assert(clone.use_memory, "Cloned network has memory")
+	_assert_eq(clone.get_weight_count(), nn.get_weight_count(), "Clone has same weight count")
+	
+	# get/set weights round-trip
+	var weights = nn.get_weights()
+	_assert_eq(weights.size(), expected_with_memory, "get_weights returns all weights")
+	var nn2 = NeuralNetwork.new(16, 8, 4)
+	nn2.enable_memory()
+	nn2.set_weights(weights)
+	var w2 = nn2.get_weights()
+	var weights_match = true
+	for i in weights.size():
+		if abs(weights[i] - w2[i]) > 1e-6:
+			weights_match = false
+			break
+	_assert(weights_match, "set_weights/get_weights round-trip")
+	
+	# Crossover
+	var parent_a = NeuralNetwork.new(16, 8, 4)
+	parent_a.enable_memory()
+	var parent_b = NeuralNetwork.new(16, 8, 4)
+	parent_b.enable_memory()
+	var child = parent_a.crossover_with(parent_b)
+	_assert(child.use_memory, "Crossover child has memory")
+	_assert_eq(child.get_weight_count(), expected_with_memory, "Crossover child weight count")
+	
+	# Mutation doesn't crash
+	nn.mutate(0.5, 0.3)
+	_assert(true, "Mutation with memory succeeds")
+	
+	# Test evolve-core recurrent network loads
+	var ec_rnn_script = load("res://evolve-core/ai/recurrent_network.gd")
+	_assert(ec_rnn_script != null, "evolve-core recurrent_network.gd loads")
+	var ec_rnn = ec_rnn_script.new(16, 8, 4, true, true)
+	_assert(ec_rnn.use_memory, "evolve-core RecurrentNetwork memory enabled")

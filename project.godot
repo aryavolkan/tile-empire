@@ -89,4 +89,4 @@ GameManager="*res://scripts/main.gd"
 
 [gdextension]
 
-evolve_native="res://rust/evolve-native.gdextension"
+tile_empire_gdext="res://rust/tile_empire_gdext.gdextension"
