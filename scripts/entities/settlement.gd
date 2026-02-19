@@ -71,6 +71,7 @@ const BUILDING_EFFECTS = {
 func initialize(on_tile: Tile, player_id: int, name: String = "") -> void:
 	tile = on_tile
 	owner_id = player_id
+	self.player_id = player_id
 	tile.settlement_id = get_instance_id()
 	
 	if name.is_empty():
