@@ -225,14 +225,14 @@ func _setup_scoreboard() -> void:
 	# Background
 	var bg = ColorRect.new()
 	bg.position = Vector2(8, 8)
-	bg.size = Vector2(245, 320)
-	bg.color = Color(0, 0, 0, 0.70)
+	bg.size = Vector2(260, 420)
+	bg.color = Color(0, 0, 0, 0.72)
 	hud.add_child(bg)
 
 	scoreboard = RichTextLabel.new()
 	scoreboard.bbcode_enabled = true
 	scoreboard.position = Vector2(12, 12)
-	scoreboard.size = Vector2(237, 308)
+	scoreboard.size = Vector2(248, 406)
 	scoreboard.scroll_active = false
 	scoreboard.add_theme_color_override("default_color", Color.WHITE)
 	scoreboard.add_theme_font_size_override("normal_font_size", 14)
@@ -301,7 +301,7 @@ func _spawn_starting_units() -> void:
 		var spawn_tile: Tile = territory[0]
 		player_start_tiles[pid] = spawn_tile
 		var unit = unit_script.new()
-		unit.initialize(spawn_tile, pid, 0)  # 0 = WARRIOR
+		unit.initialize(spawn_tile, pid, 1)  # 1 = WARRIOR
 		unit.position = tile_map.grid_to_world(spawn_tile.grid_position)
 		units_container.add_child(unit)
 		player_units[pid] = [unit]

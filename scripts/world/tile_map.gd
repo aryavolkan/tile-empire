@@ -206,7 +206,7 @@ func _draw() -> void:
 					var center = unit.position
 					if unit.current_tile:
 						center = grid_to_world(unit.current_tile.grid_position)
-					var tri_size = 6.0
+					var tri_size = hex_size * 0.55
 					var triangle = PackedVector2Array([
 						center + Vector2(0, -tri_size),
 						center + Vector2(tri_size, tri_size),
@@ -214,6 +214,9 @@ func _draw() -> void:
 					])
 					var unit_color = _get_player_color(unit.owner_id)
 					draw_polygon(triangle, PackedColorArray([unit_color]))
+					var tri_border = PackedVector2Array(triangle)
+					tri_border.append(triangle[0])
+					draw_polyline(tri_border, Color.BLACK, 2.0, true)
 
 func grid_to_world(grid_pos: Vector2i) -> Vector2:
 	# Convert hex grid coordinates to world position (pointy-top, odd-r)
