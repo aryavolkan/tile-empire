@@ -36,26 +36,26 @@ var neighbors: Array[Tile] = []
 func _init(pos: Vector2i = Vector2i.ZERO, tile_type: TileType = TileType.GRASSLAND) -> void:
 	grid_position = pos
 	type = tile_type
-	_assign_resources()
 
-func _assign_resources() -> void:
+func _assign_resources(rng: RandomNumberGenerator = null) -> void:
 	# Assign resources based on tile type
+	var _rng := rng if rng else RandomNumberGenerator.new()
 	match type:
 		TileType.GRASSLAND:
-			if randf() > 0.7:
+			if _rng.randf() > 0.7:
 				resource_type = ResourceType.FOOD
-				resource_yield = randi_range(2, 4)
+				resource_yield = _rng.randi_range(2, 4)
 		TileType.FOREST:
 			resource_type = ResourceType.WOOD
-			resource_yield = randi_range(3, 5)
+			resource_yield = _rng.randi_range(3, 5)
 		TileType.MOUNTAIN:
-			if randf() > 0.6:
-				resource_type = ResourceType.STONE if randf() > 0.5 else ResourceType.IRON
-				resource_yield = randi_range(2, 4)
+			if _rng.randf() > 0.6:
+				resource_type = ResourceType.STONE if _rng.randf() > 0.5 else ResourceType.IRON
+				resource_yield = _rng.randi_range(2, 4)
 		TileType.DESERT:
-			if randf() > 0.8:
+			if _rng.randf() > 0.8:
 				resource_type = ResourceType.GOLD
-				resource_yield = randi_range(1, 3)
+				resource_yield = _rng.randi_range(1, 3)
 
 func is_owned() -> bool:
 	return owner_id != -1
