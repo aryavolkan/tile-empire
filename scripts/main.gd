@@ -494,6 +494,18 @@ func _tank_shoot(tank: Node, pid: int) -> bool:
 	return false
 
 func _process_units(delta: float) -> void:
+	# Clean up dead unit references (queue_free'd units become invalid)
+	for pid in player_units:
+		var arr = player_units[pid]
+		var j = arr.size() - 1
+		while j >= 0:
+			if not is_instance_valid(arr[j]):
+				var dead = arr[j]
+				arr.remove_at(j)
+				unit_target_tile.erase(dead)
+				tank_has_fired.erase(dead)
+			j -= 1
+
 	var redraw_needed = false
 	for pid in player_ids_active:
 		var units = player_units.get(pid, [])
