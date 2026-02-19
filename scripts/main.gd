@@ -20,7 +20,7 @@ var camera: Camera2D
 var is_training_mode: bool = false
 var ai_timer: Timer
 var cpu_opponents: Array = []
-var player_ids_active: Array = [1, 2, 3]
+var player_ids_active: Array = [0, 1, 2, 3]  # 0 = human
 var scoreboard: RichTextLabel
 
 func _ready() -> void:
@@ -139,7 +139,7 @@ func _setup_players() -> void:
 		return
 
 	candidates.shuffle()
-	var player_ids = [1, 2, 3]
+	var player_ids = [0, 1, 2, 3]
 	var settlements_container = get_node_or_null("World/Settlements")
 
 	for i in range(min(player_ids.size(), candidates.size())):
@@ -248,12 +248,26 @@ func _setup_scoreboard() -> void:
 	scoreboard.add_theme_font_size_override("normal_font_size", 14)
 	hud.add_child(scoreboard)
 
+	# Controls hint
+	var hint = Label.new()
+	hint.text = "🖱 Click tile = Spawn Tank  |  +/- Zoom  |  WASD Pan"
+	hint.position = Vector2(8, 0)
+	hint.size = Vector2(800, 28)
+	hint.add_theme_color_override("font_color", Color(1, 1, 0.6))
+	hint.add_theme_font_size_override("font_size", 13)
+	# Anchor to bottom
+	hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	hint.offset_bottom = -6
+	hint.offset_top = -30
+	hud.add_child(hint)
+
 ## Must match tile_map.gd PLAYER_PALETTE exactly (as hex strings)
 const SCORE_PLAYER_COLORS = {
+	0: "f2e619",  # yellow — human
 	1: "d926d9",  # magenta
 	2: "ff8000",  # orange
 	3: "0de6be",  # cyan
-	4: "f2e619",  # yellow
+	4: "ffffff",
 }
 ## Terrain type info: name + buff description
 const TILE_INFO = {
@@ -303,6 +317,7 @@ func _update_scoreboard() -> void:
 
 var player_units: Dictionary = {}  # player_id -> Array[Unit]
 var player_start_tiles: Dictionary = {}  # player_id -> Tile
+const HUMAN_PLAYER_ID = 0  # player 0 is the human
 
 func _spawn_starting_units() -> void:
 	var unit_script = preload("res://scripts/entities/unit.gd")
@@ -331,6 +346,8 @@ func _spawn_starting_units() -> void:
 func _process_units(delta: float) -> void:
 	var redraw_needed = false
 	for pid in player_ids_active:
+		if pid == HUMAN_PLAYER_ID:
+			continue  # human units are manually placed, not AI-driven
 		var units = player_units.get(pid, [])
 		for unit in units:
 			if not is_instance_valid(unit) or unit.current_tile == null:
@@ -356,9 +373,12 @@ func _process_units(delta: float) -> void:
 				for t in neighbors:
 					if t == null or t.type == Tile.TileType.WATER:
 						continue
+					# Warriors don't enter tiles with enemy units (no combat)
+					if _tile_has_enemy_unit(t, pid):
+						continue
 					var priority = 0
 					if t.owner_id != -1 and t.owner_id != pid:
-						priority = 3  # enemy — attack!
+						priority = 3  # enemy territory — conquer
 					elif t.owner_id == -1:
 						priority = 2  # unclaimed
 					else:
@@ -384,8 +404,10 @@ func _start_ai_loop() -> void:
 func _on_ai_tick() -> void:
 	if territory_manager == null or tile_map == null:
 		return
-	# Territory expansion
+	# Territory expansion (AI only — skip human player 0)
 	for player_id in player_ids_active:
+		if player_id == HUMAN_PLAYER_ID:
+			continue
 		var expandable = territory_manager.get_expandable_tiles(player_id)
 		if expandable.is_empty():
 			continue
@@ -400,9 +422,37 @@ func _on_ai_tick() -> void:
 	tile_map.queue_redraw()
 	_update_scoreboard()
 
+func _tile_has_enemy_unit(tile: Tile, for_player: int) -> bool:
+	for pid in player_units:
+		if pid == for_player:
+			continue
+		for u in player_units.get(pid, []):
+			if is_instance_valid(u) and u.current_tile == tile:
+				return true
+	return false
+
+func _spawn_unit(tile: Tile, player_id: int, unit_type: int) -> void:
+	var unit_script = preload("res://scripts/entities/unit.gd")
+	var units_container = get_node_or_null("World/Units")
+	if units_container == null:
+		return
+	var unit = unit_script.new()
+	unit.initialize(tile, player_id, unit_type)
+	unit.position = tile_map.grid_to_world(tile.grid_position)
+	units_container.add_child(unit)
+	if not player_units.has(player_id):
+		player_units[player_id] = []
+	player_units[player_id].append(unit)
+	# Claim the tile for this player
+	territory_manager.conquer_tile(tile, player_id)
+	tile_map.queue_redraw()
+	_update_scoreboard()
+
 func _on_tile_clicked(tile: Tile) -> void:
-	print("Tile clicked: ", tile.grid_position, " Type: ", tile.type)
-	# Handle tile interaction based on current game state
+	# Human player spawns a Tank defender on click (on own or unclaimed tile)
+	if tile.type == Tile.TileType.WATER:
+		return
+	_spawn_unit(tile, HUMAN_PLAYER_ID, 6)  # 6 = TANK
 
 func _on_territory_expanded(player_id: int, new_tiles: Array) -> void:
 	print("Player ", player_id, " expanded territory by ", new_tiles.size(), " tiles")

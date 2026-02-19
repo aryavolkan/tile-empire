@@ -147,16 +147,16 @@ func _get_tile_color(tile_type: Tile.TileType) -> Color:
 ## Player colors — vivid, clash-proof with terrain palette
 ## Index 0 = unused, 1-4 = players
 const PLAYER_PALETTE = [
-	Color(1.0, 1.0, 1.0),        # 0 unused
-	Color(0.85, 0.15, 0.85),     # 1 magenta/purple
-	Color(1.00, 0.50, 0.05),     # 2 vivid orange
-	Color(0.05, 0.90, 0.75),     # 3 cyan/teal
-	Color(0.95, 0.90, 0.10),     # 4 yellow
+	Color(0.95, 0.90, 0.10),     # 0 yellow  — human
+	Color(0.85, 0.15, 0.85),     # 1 magenta
+	Color(1.00, 0.50, 0.05),     # 2 orange
+	Color(0.05, 0.90, 0.75),     # 3 cyan
+	Color(1.00, 1.00, 1.00),     # 4+ white fallback
 ]
 func _get_player_color(player_id: int) -> Color:
-	if player_id <= 0:
+	if player_id < 0:
 		return Color.WHITE
-	return PLAYER_PALETTE[player_id % PLAYER_PALETTE.size()]
+	return PLAYER_PALETTE[min(player_id, PLAYER_PALETTE.size() - 1)]
 
 func _get_hex_vertices(center: Vector2, size: float) -> PackedVector2Array:
 	var points = PackedVector2Array()

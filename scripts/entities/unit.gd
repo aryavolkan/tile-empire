@@ -14,7 +14,8 @@ enum UnitType {
 	ARCHER,
 	SCOUT,
 	WORKER,
-	BOAT
+	BOAT,
+	TANK
 }
 
 enum UnitState {
@@ -95,6 +96,15 @@ const UNIT_STATS = {
 		"naval": true,
 		"transport_capacity": 2,
 		"civilian": true
+	},
+	UnitType.TANK: {
+		"movement": 1,
+		"sight": 2,
+		"attack": 25,
+		"defense": 30,
+		"civilian": false,
+		"can_capture": true,
+		"blocks_enemy": true
 	}
 }
 
