@@ -175,6 +175,9 @@ var unit_target_tile: Dictionary = {}  # unit -> Tile (next destination)
 var recently_lost: Array[Tile] = []    # tiles recently stolen from us — tanks reclaim
 const TANK_SHOOT_RANGE = 180.0        # px — tanks kill enemy warriors in this radius
 var tank_has_fired: Dictionary = {}    # tank -> true once it uses its single shot
+var unit_hp: Dictionary = {}           # unit -> float (current HP)
+const UNIT_MAX_HP = 1000.0             # warriors need 1000 tank hits to die (1000x survival)
+const TANK_DAMAGE   = 1.0              # tank deals 1 HP per shot
 var shoot_flashes: Array = []          # [{from, to, ttl}] for visual feedback
 
 # Human player resources
@@ -485,11 +488,15 @@ func _tank_shoot(tank: Node, pid: int) -> bool:
 				target_unit = eu
 	if target_unit:
 		shoot_flashes.append({"from": tank.position, "to": target_unit.position, "ttl": 0.18})
-		var epid = target_unit.owner_id
-		player_units[epid].erase(target_unit)
-		unit_target_tile.erase(target_unit)
-		tank_has_fired[tank] = true   # one shot only — tank is now spent
-		target_unit.queue_free()
+		tank_has_fired[tank] = true  # one shot only — tank is now spent
+		var hp = unit_hp.get(target_unit, UNIT_MAX_HP) - TANK_DAMAGE
+		unit_hp[target_unit] = hp
+		if hp <= 0.0:
+			var epid = target_unit.owner_id
+			player_units[epid].erase(target_unit)
+			unit_target_tile.erase(target_unit)
+			unit_hp.erase(target_unit)
+			target_unit.queue_free()
 		return true
 	return false
 
@@ -635,6 +642,7 @@ func _do_spawn_unit(container: Node, tile: Tile, player_id: int, unit_type: int)
 	if not player_units.has(player_id):
 		player_units[player_id] = []
 	player_units[player_id].append(unit)
+	unit_hp[unit] = UNIT_MAX_HP  # initialise health
 
 func _spawn_unit(tile: Tile, player_id: int, unit_type: int) -> void:
 	var units_container = get_node_or_null("World/Units")
