@@ -23,6 +23,9 @@ func _ready() -> void:
 	# Check if in training mode
 	_check_training_mode()
 	
+	# Ensure expected scene nodes exist (autoloads won't have them)
+	_ensure_scene_nodes()
+	
 	# Initialize core systems
 	_setup_map()
 	_setup_systems()
@@ -47,9 +50,40 @@ func _check_training_mode() -> void:
 			is_training_mode = true
 			break
 
+func _ensure_scene_nodes() -> void:
+	var world = get_node_or_null("World")
+	if world == null:
+		world = Node2D.new()
+		world.name = "World"
+		add_child(world)
+	
+	var tile_map_container = world.get_node_or_null("TileMap")
+	if tile_map_container == null:
+		tile_map_container = Node2D.new()
+		tile_map_container.name = "TileMap"
+		world.add_child(tile_map_container)
+	
+	for child_name in ["Units", "Settlements"]:
+		if world.get_node_or_null(child_name) == null:
+			var container = Node2D.new()
+			container.name = child_name
+			world.add_child(container)
+	
+	camera = get_node_or_null("Camera2D")
+	if camera == null:
+		camera = Camera2D.new()
+		camera.name = "Camera2D"
+		camera.enabled = true
+		add_child(camera)
+
 func _setup_map() -> void:
+	var tile_map_container = get_node_or_null("World/TileMap")
+	if tile_map_container == null:
+		push_error("TileMap container missing; cannot initialize map")
+		return
+	
 	tile_map = tile_map_script.new()
-	$World/TileMap.add_child(tile_map)
+	tile_map_container.add_child(tile_map)
 
 func _setup_systems() -> void:
 	# Territory management
@@ -71,10 +105,15 @@ func _setup_systems() -> void:
 	add_child(multiplayer_manager)
 
 func _setup_camera() -> void:
-	camera = $Camera2D
-	camera.position = Vector2(640, 360)  # Center of default viewport
+	if camera == null:
+		camera = get_node_or_null("Camera2D")
+	if camera:
+		camera.position = Vector2(640, 360)  # Center of default viewport
 
 func _input(event: InputEvent) -> void:
+	if camera == null:
+		return
+	
 	# Camera controls
 	if event.is_action("camera_pan"):
 		if event.is_pressed():
