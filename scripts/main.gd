@@ -163,6 +163,7 @@ func _setup_players() -> void:
 
 	if tile_map:
 		tile_map.queue_redraw()
+	_update_scoreboard()
 	_start_ai_loop()
 
 func _process(delta: float) -> void:
@@ -220,23 +221,21 @@ func _setup_scoreboard() -> void:
 	hud.name = "HUD"
 	add_child(hud)
 
+	# Background
+	var bg = ColorRect.new()
+	bg.position = Vector2(8, 8)
+	bg.size = Vector2(230, 220)
+	bg.color = Color(0, 0, 0, 0.65)
+	hud.add_child(bg)
+
 	scoreboard = RichTextLabel.new()
 	scoreboard.bbcode_enabled = true
-	scoreboard.fit_content = true
-	scoreboard.position = Vector2(10, 10)
-	scoreboard.size = Vector2(220, 200)
+	scoreboard.position = Vector2(12, 12)
+	scoreboard.size = Vector2(222, 212)
+	scoreboard.scroll_active = false
 	scoreboard.add_theme_color_override("default_color", Color.WHITE)
 	scoreboard.add_theme_font_size_override("normal_font_size", 14)
-
-	# Semi-transparent background panel
-	var panel = PanelContainer.new()
-	panel.position = Vector2(8, 8)
-	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0, 0, 0, 0.6)
-	style.set_corner_radius_all(6)
-	panel.add_theme_stylebox_override("panel", style)
-	panel.add_child(scoreboard)
-	hud.add_child(panel)
+	hud.add_child(scoreboard)
 
 func _update_scoreboard() -> void:
 	if scoreboard == null or tile_map == null:
