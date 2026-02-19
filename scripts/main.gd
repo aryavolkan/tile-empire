@@ -163,6 +163,7 @@ func _setup_players() -> void:
 
 	if tile_map:
 		tile_map.queue_redraw()
+	_spawn_starting_units()
 	_update_scoreboard()
 	_start_ai_loop()
 
@@ -278,6 +279,62 @@ func _update_scoreboard() -> void:
 			text += "  [color=#aaaaaa]%s[/color] [color=#ffdd88]%s[/color]: %d\n" % [info[0], info[1], player_tiles[pid][t_type]]
 	scoreboard.text = text
 
+var player_units: Dictionary = {}  # player_id -> Array[Unit]
+var player_start_tiles: Dictionary = {}  # player_id -> Tile
+
+func _spawn_starting_units() -> void:
+	var unit_script = preload("res://scripts/entities/unit.gd")
+	var units_container = get_node_or_null("World/Units")
+	if units_container == null:
+		units_container = Node2D.new()
+		units_container.name = "Units"
+		var world = get_node_or_null("World")
+		if world:
+			world.add_child(units_container)
+		else:
+			add_child(units_container)
+
+	for pid in player_ids_active:
+		var territory = territory_manager.player_territories.get(pid, [])
+		if territory.is_empty():
+			continue
+		var spawn_tile: Tile = territory[0]
+		player_start_tiles[pid] = spawn_tile
+		var unit = unit_script.new()
+		unit.initialize(spawn_tile, pid, 0)  # 0 = WARRIOR
+		unit.position = tile_map.grid_to_world(spawn_tile.grid_position)
+		units_container.add_child(unit)
+		player_units[pid] = [unit]
+
+func _move_units() -> void:
+	for pid in player_ids_active:
+		var units = player_units.get(pid, [])
+		for unit in units:
+			if not is_instance_valid(unit) or unit.current_tile == null:
+				continue
+			# Move toward nearest enemy tile
+			var neighbors = tile_map.get_neighbors(unit.current_tile)
+			var best_tile: Tile = null
+			var best_priority = -1
+			for t in neighbors:
+				if t == null or t.type == Tile.TileType.WATER:
+					continue
+				var priority = 0
+				if t.owner_id != -1 and t.owner_id != pid:
+					priority = 3  # enemy tile — attack!
+				elif t.owner_id == -1:
+					priority = 2  # unclaimed
+				elif t.owner_id == pid:
+					priority = 1  # own tile (fallback)
+				if priority > best_priority:
+					best_priority = priority
+					best_tile = t
+			if best_tile and best_tile != unit.current_tile:
+				unit.current_tile = best_tile
+				unit.position = tile_map.grid_to_world(best_tile.grid_position)
+				if best_tile.owner_id != pid:
+					territory_manager.claim_tile(best_tile, pid)
+
 func _start_ai_loop() -> void:
 	ai_timer = Timer.new()
 	ai_timer.wait_time = 1.5
@@ -288,11 +345,11 @@ func _start_ai_loop() -> void:
 func _on_ai_tick() -> void:
 	if territory_manager == null or tile_map == null:
 		return
+	# Territory expansion
 	for player_id in player_ids_active:
 		var expandable = territory_manager.get_expandable_tiles(player_id)
 		if expandable.is_empty():
 			continue
-		# Pick the best tile (highest resource yield)
 		var best_tile: Tile = expandable[0]
 		var best_score = -1.0
 		for t in expandable:
@@ -301,6 +358,8 @@ func _on_ai_tick() -> void:
 				best_score = score
 				best_tile = t
 		territory_manager.claim_tile(best_tile, player_id)
+	# Unit movement
+	_move_units()
 	tile_map.queue_redraw()
 	_update_scoreboard()
 
