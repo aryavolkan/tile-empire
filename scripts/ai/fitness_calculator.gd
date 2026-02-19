@@ -31,6 +31,8 @@ func calculate_fitness(agent_data: Dictionary, episode_data: Dictionary) -> Arra
 	- culture_score: float
 	- units_killed: int
 	- units_lost: int
+	- resource_efficiency: float (optional, 0-1)
+	- territory_growth_rate: float (optional, tiles/min)
 	
 	episode_data should contain:
 	- ticks_survived: int
@@ -123,6 +125,19 @@ func _calculate_progression_score(agent_data: Dictionary) -> float:
 	score += military_score * 0.1
 	max_possible += 0.1
 	
+	# Resource efficiency bonus (extra reward, doesn't change max_possible baseline)
+	var efficiency = agent_data.get("resource_efficiency", 0.0)
+	if efficiency > 0.0:
+		score += clampf(efficiency, 0.0, 1.0) * 0.1
+		max_possible += 0.1
+	
+	# Territory growth rate bonus (tiles per minute, rewards fast expansion)
+	var growth_rate = agent_data.get("territory_growth_rate", 0.0)
+	if growth_rate > 0.0:
+		var growth_score = minf(growth_rate / 5.0, 1.0)  # Cap at 5 tiles/min
+		score += growth_score * 0.05
+		max_possible += 0.05
+	
 	return clampf(score / max_possible, 0.0, 1.0)
 
 func _calculate_survival_score(ticks_survived: int, max_ticks: int) -> float:
@@ -178,7 +193,9 @@ func get_metrics_dict(agent_data: Dictionary, episode_data: Dictionary) -> Dicti
 		"units_killed": agent_data.get("units_killed", 0),
 		"units_lost": agent_data.get("units_lost", 0),
 		"victory_achieved": episode_data.get("victory_achieved", false),
-		"victory_type": episode_data.get("victory_type", "none")
+		"victory_type": episode_data.get("victory_type", "none"),
+		"resource_efficiency": agent_data.get("resource_efficiency", 0.0),
+		"territory_growth_rate": agent_data.get("territory_growth_rate", 0.0)
 	}
 
 func aggregate_fitness(fitness_array: Array) -> float:

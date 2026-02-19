@@ -21,6 +21,9 @@ func _init():
 	_run_settlement_tests()
 	_run_skill_tree_tests()
 	_run_nsga2_tests()
+	_run_cpu_opponent_tests()
+	_run_multiplayer_manager_tests()
+	_run_training_pipeline_tests()
 	
 	print("\n============================================")
 	print("Results: %d passed, %d failed, %d total" % [_tests_passed, _tests_failed, _tests_total])
@@ -330,3 +333,244 @@ func _run_nsga2_tests() -> void:
 	# Pareto front
 	var pareto = NSGA2.get_pareto_front(objectives)
 	_assert(pareto.size() >= 3, "pareto front has non-dominated points")
+
+# ==================== CPU Opponent Tests ====================
+
+func _run_cpu_opponent_tests() -> void:
+	_suite("CPU Opponent")
+	
+	# Create a mock settlement for the CPU
+	var settlement = Settlement.new()
+	settlement.population = 10
+	settlement.food = 200
+	settlement.wood = 100
+	settlement.stone = 50
+	settlement.gold = 50
+	settlement.production = 100
+	
+	# Test initialization
+	var cpu = CPUOpponent.new()
+	cpu.initialize(settlement, 1, "easy")
+	_assert_eq(cpu.player_id, 1, "player_id set correctly")
+	_assert_eq(cpu.difficulty, "easy", "difficulty set correctly")
+	_assert_near(cpu.think_interval, 3.0, 0.01, "easy think interval is 3.0")
+	
+	var cpu_hard = CPUOpponent.new()
+	cpu_hard.initialize(settlement, 2, "hard")
+	_assert_near(cpu_hard.think_interval, 1.0, 0.01, "hard think interval is 1.0")
+	
+	# Test situational weights
+	var weights = cpu.get_situational_weights()
+	_assert(weights.has("expand"), "weights has expand")
+	_assert(weights.has("defend"), "weights has defend")
+	_assert(weights.has("upgrade"), "weights has upgrade")
+	_assert(weights.has("economy"), "weights has economy")
+	_assert(weights.has("military"), "weights has military")
+	_assert(weights.has("tech"), "weights has tech")
+	
+	# All weights should be positive
+	for key in weights:
+		_assert(weights[key] > 0, "weight '%s' is positive" % key)
+	
+	# Test threat level with no territory manager
+	var threat = cpu.get_max_threat_level()
+	_assert_near(threat, 0.0, 0.01, "threat is 0 without territory manager")
+	
+	# Test tile scoring
+	var grass_tile = Tile.new(Vector2i(0, 0), Tile.TileType.GRASSLAND)
+	grass_tile.resource_type = Tile.ResourceType.FOOD
+	grass_tile.resource_yield = 3
+	
+	var desert_tile = Tile.new(Vector2i(1, 0), Tile.TileType.DESERT)
+	desert_tile.resource_type = Tile.ResourceType.NONE
+	desert_tile.resource_yield = 0
+	
+	var grass_score = cpu.score_tile_for_expansion(grass_tile)
+	var desert_score = cpu_hard.score_tile_for_expansion(desert_tile)
+	# Grassland with food should generally score higher than empty desert
+	# (allowing for randomness, test multiple times)
+	var grass_wins := 0
+	for i in 20:
+		if cpu.score_tile_for_expansion(grass_tile) > cpu.score_tile_for_expansion(desert_tile):
+			grass_wins += 1
+	_assert(grass_wins > 10, "resource-rich tile scores higher most of the time (%d/20)" % grass_wins)
+	
+	# Test is_destroyed
+	_assert(!cpu.is_destroyed(), "not destroyed with valid settlement")
+	settlement.population = 0
+	_assert(cpu.is_destroyed(), "destroyed when settlement destroyed")
+	
+	# Test with low resources — economy weight should increase
+	settlement.population = 5
+	settlement.food = 10
+	settlement.wood = 5
+	var low_res_weights = cpu.get_situational_weights()
+	_assert(low_res_weights["economy"] > weights["economy"],
+		"economy weight increases when resources low")
+	
+	# Test upgrade boost
+	settlement.food = 200
+	settlement.wood = 100
+	settlement.production = 200
+	settlement.population = 5
+	settlement.buildings.append("granary")
+	# Settlement can_upgrade checks STAGE_REQUIREMENTS — HUT->VILLAGE needs pop 5 + granary
+	if settlement.can_upgrade():
+		var upgrade_weights = cpu.get_situational_weights()
+		_assert(upgrade_weights["upgrade"] > STRATEGY_WEIGHTS["easy"]["upgrade"],
+			"upgrade weight boosted when can_upgrade")
+
+# ==================== Multiplayer Manager Tests ====================
+
+func _run_multiplayer_manager_tests() -> void:
+	_suite("Multiplayer Manager")
+	
+	var mm = MultiplayerManager.new()
+	
+	# Test initial state
+	_assert(!mm.is_host, "not host initially")
+	_assert_eq(mm.get_player_count(), 0, "no players initially")
+	_assert_eq(mm.get_current_player_id(), -1, "no current player initially")
+	_assert(!mm.is_my_turn(), "not my turn initially")
+	
+	# Test state hash is deterministic
+	mm.game_state = {"turn": 1, "phase": "placement"}
+	var hash1 = mm.compute_state_hash()
+	var hash2 = mm.compute_state_hash()
+	_assert_eq(hash1, hash2, "state hash is deterministic")
+	
+	# Different state = different hash
+	mm.game_state = {"turn": 2, "phase": "placement"}
+	var hash3 = mm.compute_state_hash()
+	_assert(hash1 != hash3, "different state produces different hash")
+	
+	# Test player info retrieval
+	mm.player_info[1] = {"name": "Test", "color": Color.BLUE, "ready": false}
+	_assert_eq(mm.get_player_count(), 1, "player count after adding")
+	var info = mm.get_player_info(1)
+	_assert_eq(info["name"], "Test", "player name retrieved")
+	_assert(mm.get_player_info(999).is_empty(), "unknown player returns empty dict")
+	
+	# Test close_connection cleanup (manual, since we can't call close_connection without tree)
+	mm.is_host = true
+	mm.player_info.clear()
+	mm.game_state.clear()
+	mm.is_host = false
+	_assert(!mm.is_host, "not host after reset")
+	_assert_eq(mm.player_info.size(), 0, "player_info cleared after reset")
+	_assert_eq(mm.game_state.size(), 0, "game_state cleared after reset")
+	
+	# Test _advance_turn with mock state
+	mm.is_host = true
+	mm.player_info = {1: {"name": "A"}, 2: {"name": "B"}, 3: {"name": "C"}}
+	mm.game_state = {"turn": 1, "current_player": 1, "players": {}}
+	mm._advance_turn()
+	_assert_eq(mm.game_state.current_player, 2, "turn advances to next player")
+	
+	mm._advance_turn()
+	_assert_eq(mm.game_state.current_player, 3, "turn advances again")
+	
+	mm._advance_turn()
+	_assert_eq(mm.game_state.current_player, 1, "turn wraps around")
+	_assert_eq(mm.game_state.turn, 2, "turn counter increments on wrap")
+	
+	# Test _process_end_turn validates current player
+	mm.game_state.current_player = 1
+	mm._process_end_turn(2)  # Wrong player
+	_assert_eq(mm.game_state.current_player, 1, "end_turn rejected for wrong player")
+	mm._process_end_turn(1)  # Correct player
+	_assert_eq(mm.game_state.current_player, 2, "end_turn accepted for correct player")
+
+# ==================== Training Pipeline Tests ====================
+
+func _run_training_pipeline_tests() -> void:
+	_suite("Training Pipeline")
+	
+	# Test FitnessCalculator with new resource_efficiency field
+	var fc = FitnessCalculator.new()
+	
+	var agent_base = {
+		"tiles_owned": 10,
+		"settlement_stage": 1,
+		"buildings_count": 3,
+		"techs_unlocked": 2,
+		"culture_score": 50,
+		"units_killed": 5,
+		"units_lost": 2,
+	}
+	var episode_base = {
+		"ticks_survived": 1500,
+		"total_map_tiles": 100,
+		"victory_achieved": false,
+		"victory_type": "none"
+	}
+	
+	# Without efficiency fields
+	var fitness_no_eff = fc.calculate_fitness(agent_base, episode_base)
+	_assert_eq(fitness_no_eff.size(), 3, "fitness still has 3 objectives")
+	
+	# With efficiency fields — progression should be >= without
+	var agent_with_eff = agent_base.duplicate()
+	agent_with_eff["resource_efficiency"] = 0.8
+	agent_with_eff["territory_growth_rate"] = 3.0
+	var fitness_with_eff = fc.calculate_fitness(agent_with_eff, episode_base)
+	_assert(fitness_with_eff[1] >= fitness_no_eff[1],
+		"progression score >= without efficiency bonus (%.3f >= %.3f)" % [fitness_with_eff[1], fitness_no_eff[1]])
+	
+	# Test aggregate fitness
+	var agg = fc.aggregate_fitness(fitness_with_eff)
+	_assert(agg > 0.0, "aggregate fitness is positive for active agent")
+	_assert(agg <= 1.0, "aggregate fitness <= 1.0")
+	
+	# Test metrics dict includes new fields
+	var metrics = fc.get_metrics_dict(agent_with_eff, episode_base)
+	_assert(metrics.has("resource_efficiency"), "metrics has resource_efficiency")
+	_assert(metrics.has("territory_growth_rate"), "metrics has territory_growth_rate")
+	_assert_near(metrics["resource_efficiency"], 0.8, 0.01, "resource_efficiency value preserved")
+	
+	# Test that better territory = better territory score
+	var agent_small = {"tiles_owned": 2, "settlement_stage": 0, "buildings_count": 0,
+		"techs_unlocked": 0, "culture_score": 0, "units_killed": 0, "units_lost": 0}
+	var agent_big = {"tiles_owned": 50, "settlement_stage": 0, "buildings_count": 0,
+		"techs_unlocked": 0, "culture_score": 0, "units_killed": 0, "units_lost": 0}
+	var f_small = fc.calculate_fitness(agent_small, episode_base)
+	var f_big = fc.calculate_fitness(agent_big, episode_base)
+	_assert(f_big[0] > f_small[0], "more territory = higher territory score")
+	
+	# Test domination victory multiplier
+	var episode_dom = episode_base.duplicate()
+	episode_dom["victory_achieved"] = true
+	episode_dom["victory_type"] = "domination"
+	var f_victory = fc.calculate_fitness(agent_base, episode_dom)
+	_assert(f_victory[0] > fitness_no_eff[0], "domination victory boosts territory score")
+	_assert_near(f_victory[2], 1.0, 0.01, "survival is 1.0 on victory")
+	
+	# Smoke test: AgentObserver can be instantiated
+	var obs = AgentObserver.new()
+	_assert(obs != null, "AgentObserver instantiates")
+	_assert_eq(obs.player_index, 0, "observer default player_index is 0")
+	
+	# Smoke test: AgentActions can be instantiated
+	var act = AgentActions.new()
+	_assert(act != null, "AgentActions instantiates")
+	_assert_eq(act.NUM_ACTIONS, 13, "action space has 13 actions")
+	
+	# Test action validity without game refs (should all be false except IDLE and COLLECT_RESOURCES)
+	_assert(act.is_action_valid(AgentActions.Action.IDLE), "IDLE always valid")
+	_assert(act.is_action_valid(AgentActions.Action.COLLECT_RESOURCES), "COLLECT_RESOURCES always valid")
+	_assert(!act.is_action_valid(AgentActions.Action.EXPAND_TERRITORY), "EXPAND invalid without territory_manager")
+	_assert(!act.is_action_valid(AgentActions.Action.SPAWN_WARRIOR), "SPAWN_WARRIOR invalid without settlement")
+	
+	# Test cooldown system
+	act.action_cooldowns[AgentActions.Action.IDLE] = 5.0
+	_assert(!act.is_action_valid(AgentActions.Action.IDLE), "action invalid during cooldown")
+	act.update_cooldowns(5.0)
+	_assert(act.is_action_valid(AgentActions.Action.IDLE), "action valid after cooldown expires")
+
+# Reference the constant for CPU opponent tests
+const STRATEGY_WEIGHTS = {
+	"easy": {
+		"expand": 0.35, "defend": 0.10, "upgrade": 0.10,
+		"economy": 0.25, "military": 0.10, "tech": 0.10
+	}
+}

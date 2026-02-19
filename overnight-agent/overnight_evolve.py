@@ -265,7 +265,9 @@ def evaluate_genome(genome, config, worker_id):
                     all_metrics.append(metrics)
                     
                     print(f"Episode {episode + 1}: T={metrics['territory_score']:.3f} "
-                          f"P={metrics['progression_score']:.3f} S={metrics['survival_score']:.3f}")
+                          f"P={metrics['progression_score']:.3f} S={metrics['survival_score']:.3f} "
+                          f"RE={metrics.get('resource_efficiency', 0):.3f} "
+                          f"GR={metrics.get('territory_growth_rate', 0):.3f}")
             else:
                 print(f"Episode {episode + 1}: No metrics file generated")
                 
@@ -293,6 +295,8 @@ def evaluate_genome(genome, config, worker_id):
         avg_metrics['best_territory'] = max(m['territory_score'] for m in all_metrics)
         avg_metrics['best_progression'] = max(m['progression_score'] for m in all_metrics)
         avg_metrics['best_survival'] = max(m['survival_score'] for m in all_metrics)
+        avg_metrics['avg_resource_efficiency'] = sum(m.get('resource_efficiency', 0) for m in all_metrics) / len(all_metrics)
+        avg_metrics['avg_territory_growth_rate'] = sum(m.get('territory_growth_rate', 0) for m in all_metrics) / len(all_metrics)
         
         return avg_metrics
     
@@ -345,6 +349,8 @@ def train():
                     'best_territory': metrics.get('best_territory', 0),
                     'best_progression': metrics.get('best_progression', 0),
                     'best_survival': metrics.get('best_survival', 0),
+                    'resource_efficiency': metrics.get('avg_resource_efficiency', 0),
+                    'territory_growth_rate': metrics.get('avg_territory_growth_rate', 0),
                 })
         
         gen_avg_fitness /= len(neat.population)

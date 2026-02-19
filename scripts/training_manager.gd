@@ -173,7 +173,12 @@ func start_episode():
 		"techs_unlocked": 0,
 		"culture_score": 0,
 		"units_killed": 0,
-		"units_lost": 0
+		"units_lost": 0,
+		"resource_efficiency": 0.0,
+		"territory_growth_rate": 0.0,
+		"_prev_tiles_owned": 1,
+		"_total_resources_spent": 0,
+		"_total_resources_gained": 0,
 	}
 	
 	episode_data = {
@@ -275,12 +280,21 @@ func _update_metrics():
 	if not ai_settlement:
 		return
 		
-	agent_data["tiles_owned"] = observer.get_territory_size(ai_settlement)
+	var current_tiles = observer.get_territory_size(ai_settlement)
+	agent_data["tiles_owned"] = current_tiles
 	agent_data["settlement_stage"] = ai_settlement.stage
 	agent_data["buildings_count"] = _get_total_buildings()
 	agent_data["techs_unlocked"] = observer.get_unlocked_tech_count()
 	agent_data["culture_score"] = observer.get_culture_score()
 	# Units killed/lost would be tracked by combat system
+	
+	# Territory growth rate (tiles per minute)
+	var elapsed_minutes = maxf(episode_ticks / 3600.0, 0.01)  # 60 ticks/sec
+	agent_data["territory_growth_rate"] = float(current_tiles - 1) / elapsed_minutes
+	
+	# Resource efficiency: ratio of territory+buildings gained to time
+	var total_output = current_tiles + agent_data["buildings_count"] + int(ai_settlement.stage) * 3
+	agent_data["resource_efficiency"] = clampf(float(total_output) / maxf(elapsed_minutes * 10.0, 1.0), 0.0, 1.0)
 
 func _get_total_buildings() -> int:
 	"""Count total buildings owned by AI"""
