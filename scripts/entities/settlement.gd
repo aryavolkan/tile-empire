@@ -68,14 +68,14 @@ const BUILDING_EFFECTS = {
 	"palace": {"all_yields": 2, "happiness": 3}
 }
 
-func initialize(on_tile: Tile, player_id: int, name: String = "") -> void:
+func initialize(on_tile: Tile, player_id: int, name: String = "", rng: RandomNumberGenerator = null) -> void:
 	tile = on_tile
 	owner_id = player_id
 	self.player_id = player_id
 	tile.settlement_id = get_instance_id()
-	
+
 	if name.is_empty():
-		settlement_name = _generate_settlement_name()
+		settlement_name = _generate_settlement_name(rng)
 	else:
 		settlement_name = name
 	
@@ -85,9 +85,11 @@ func initialize(on_tile: Tile, player_id: int, name: String = "") -> void:
 	_update_max_population()
 	_update_visuals()
 
-func _generate_settlement_name() -> String:
+func _generate_settlement_name(rng: RandomNumberGenerator = null) -> String:
 	var prefixes = ["New", "North", "South", "East", "West", "Old", "Fort", "Port"]
 	var suffixes = ["haven", "shire", "ton", "ville", "burg", "field", "wood", "hill"]
+	if rng:
+		return prefixes[rng.randi() % prefixes.size()] + suffixes[rng.randi() % suffixes.size()]
 	return prefixes[randi() % prefixes.size()] + suffixes[randi() % suffixes.size()]
 
 func process_turn() -> void:
