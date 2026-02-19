@@ -18,6 +18,9 @@ var training_manager: TrainingManager
 
 var camera: Camera2D
 var is_training_mode: bool = false
+var ai_timer: Timer
+var cpu_opponents: Array = []
+var player_ids_active: Array = [1, 2, 3]
 
 func _ready() -> void:
 	# Check if in training mode
@@ -158,6 +161,7 @@ func _setup_players() -> void:
 
 	if tile_map:
 		tile_map.queue_redraw()
+	_start_ai_loop()
 
 func _input(event: InputEvent) -> void:
 	if camera == null:
@@ -177,19 +181,45 @@ func _input(event: InputEvent) -> void:
 		camera.position -= delta * 0.5
 		camera.set_meta("pan_start", event.position)
 	
-	# Zoom controls
-	if event.is_action_pressed("camera_zoom_in"):
-		camera.zoom *= 1.1
-		camera.zoom = camera.zoom.clamp(Vector2(0.5, 0.5), Vector2(2.0, 2.0))
-	elif event.is_action_pressed("camera_zoom_out"):
-		camera.zoom *= 0.9
-		camera.zoom = camera.zoom.clamp(Vector2(0.5, 0.5), Vector2(2.0, 2.0))
+	# Zoom controls (scroll wheel)
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			camera.zoom *= 1.15
+			camera.zoom = camera.zoom.clamp(Vector2(0.1, 0.1), Vector2(4.0, 4.0))
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			camera.zoom *= 0.87
+			camera.zoom = camera.zoom.clamp(Vector2(0.1, 0.1), Vector2(4.0, 4.0))
+
+func _start_ai_loop() -> void:
+	ai_timer = Timer.new()
+	ai_timer.wait_time = 1.5
+	ai_timer.autostart = true
+	ai_timer.timeout.connect(_on_ai_tick)
+	add_child(ai_timer)
+
+func _on_ai_tick() -> void:
+	if territory_manager == null or tile_map == null:
+		return
+	for player_id in player_ids_active:
+		var expandable = territory_manager.get_expandable_tiles(player_id)
+		if expandable.is_empty():
+			continue
+		# Pick the best tile (highest resource yield)
+		var best_tile: Tile = expandable[0]
+		var best_score = -1.0
+		for t in expandable:
+			var score = t.get_food_yield() + t.get_production_yield() + t.get_gold_yield()
+			if score > best_score:
+				best_score = score
+				best_tile = t
+		territory_manager.claim_tile(best_tile, player_id)
+	tile_map.queue_redraw()
 
 func _on_tile_clicked(tile: Tile) -> void:
 	print("Tile clicked: ", tile.grid_position, " Type: ", tile.type)
 	# Handle tile interaction based on current game state
 
-func _on_territory_expanded(player_id: int, new_tiles: Array[Tile]) -> void:
+func _on_territory_expanded(player_id: int, new_tiles: Array) -> void:
 	print("Player ", player_id, " expanded territory by ", new_tiles.size(), " tiles")
 
 func _on_skill_unlocked(skill_id: String, player_id: int) -> void:
