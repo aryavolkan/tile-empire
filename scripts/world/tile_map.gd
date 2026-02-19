@@ -203,9 +203,8 @@ func _draw() -> void:
 		if units_node:
 			for unit in units_node.get_children():
 				if unit is Unit:
+					# Use the unit's actual pixel position (smoothly interpolated by main.gd)
 					var center = unit.position
-					if unit.current_tile:
-						center = grid_to_world(unit.current_tile.grid_position)
 					var unit_color = _get_player_color(unit.owner_id)
 					var is_tank = (unit.unit_type == 6)  # UnitType.TANK
 					if is_tank:

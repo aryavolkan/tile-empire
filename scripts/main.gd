@@ -462,8 +462,10 @@ func _process_units(delta: float) -> void:
 				else:
 					unit_target_tile[unit] = unit.current_tile
 
-	if redraw_needed:
+	# Always redraw when any unit exists (smooth motion needs every-frame repaint)
+	if not player_units.is_empty():
 		tile_map.queue_redraw()
+	if redraw_needed:
 		_update_scoreboard()
 
 func _start_ai_loop() -> void:
