@@ -10,8 +10,7 @@ jobs:
     runs-on: [self-hosted, macos, arm64]
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+        # Skip submodules - evolve-core is private
 
       - name: Install gdtoolkit
         run: pip3 install --quiet --break-system-packages gdtoolkit
