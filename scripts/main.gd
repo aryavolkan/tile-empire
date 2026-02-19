@@ -181,13 +181,20 @@ func _input(event: InputEvent) -> void:
 		camera.position -= delta * 0.5
 		camera.set_meta("pan_start", event.position)
 	
-	# Zoom controls (scroll wheel)
+	# Zoom controls (scroll wheel + keyboard +/-)
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			camera.zoom *= 1.15
 			camera.zoom = camera.zoom.clamp(Vector2(0.1, 0.1), Vector2(4.0, 4.0))
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			camera.zoom *= 0.87
+			camera.zoom = camera.zoom.clamp(Vector2(0.1, 0.1), Vector2(4.0, 4.0))
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_EQUAL or event.keycode == KEY_PLUS:
+			camera.zoom *= 1.2
+			camera.zoom = camera.zoom.clamp(Vector2(0.1, 0.1), Vector2(4.0, 4.0))
+		elif event.keycode == KEY_MINUS:
+			camera.zoom *= 0.83
 			camera.zoom = camera.zoom.clamp(Vector2(0.1, 0.1), Vector2(4.0, 4.0))
 
 func _start_ai_loop() -> void:
