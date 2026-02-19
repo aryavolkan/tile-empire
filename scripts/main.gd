@@ -167,9 +167,9 @@ func _setup_players() -> void:
 	_update_scoreboard()
 	_start_ai_loop()
 
-const UNIT_SPEED = 80.0       # pixels per second
-const UNIT_MOVE_INTERVAL = 0.8  # seconds between tile hops
-const UNIT_ATTACK_RANGE = 60.0  # pixels — within this, try to attack
+const UNIT_SPEED = 80.0           # pixels per second
+const WARRIOR_MOVE_INTERVAL = 0.8 # seconds between warrior tile hops
+const TANK_MOVE_INTERVAL = 1.6    # tanks are slower but tougher
 
 var unit_move_timers: Dictionary = {}  # unit -> float elapsed
 
@@ -250,7 +250,7 @@ func _setup_scoreboard() -> void:
 
 	# Controls hint
 	var hint = Label.new()
-	hint.text = "🖱 Click tile = Spawn Tank  |  +/- Zoom  |  WASD Pan"
+	hint.text = "You = 🟡 Yellow  |  Click = Spawn Tank  |  +/- Zoom  |  WASD Pan"
 	hint.position = Vector2(8, 0)
 	hint.size = Vector2(800, 28)
 	hint.add_theme_color_override("font_color", Color(1, 1, 0.6))
@@ -320,7 +320,6 @@ var player_start_tiles: Dictionary = {}  # player_id -> Tile
 const HUMAN_PLAYER_ID = 0  # player 0 is the human
 
 func _spawn_starting_units() -> void:
-	var unit_script = preload("res://scripts/entities/unit.gd")
 	var units_container = get_node_or_null("World/Units")
 	if units_container == null:
 		units_container = Node2D.new()
@@ -337,55 +336,83 @@ func _spawn_starting_units() -> void:
 			continue
 		var spawn_tile: Tile = territory[0]
 		player_start_tiles[pid] = spawn_tile
-		var unit = unit_script.new()
-		unit.initialize(spawn_tile, pid, 1)  # 1 = WARRIOR
-		unit.position = tile_map.grid_to_world(spawn_tile.grid_position)
-		units_container.add_child(unit)
-		player_units[pid] = [unit]
+		player_units[pid] = []
+		# Spawn 1 warrior + 1 tank per player
+		_do_spawn_unit(units_container, spawn_tile, pid, 1)  # WARRIOR
+		_do_spawn_unit(units_container, spawn_tile, pid, 6)  # TANK
 
 func _process_units(delta: float) -> void:
 	var redraw_needed = false
 	for pid in player_ids_active:
-		if pid == HUMAN_PLAYER_ID:
-			continue  # human units are manually placed, not AI-driven
 		var units = player_units.get(pid, [])
 		for unit in units:
 			if not is_instance_valid(unit) or unit.current_tile == null:
 				continue
 
+			var is_tank = (unit.unit_type == 6)  # UnitType.TANK
+			var move_interval = TANK_MOVE_INTERVAL if is_tank else WARRIOR_MOVE_INTERVAL
+
 			# Accumulate time
 			var elapsed = unit_move_timers.get(unit, 0.0) + delta
 			unit_move_timers[unit] = elapsed
 
-			# Smooth pixel movement toward target tile center
+			# Smooth pixel movement toward current tile center
 			var target_pos = tile_map.grid_to_world(unit.current_tile.grid_position)
 			var dist = unit.position.distance_to(target_pos)
 			if dist > 2.0:
 				unit.position = unit.position.move_toward(target_pos, UNIT_SPEED * delta)
 				redraw_needed = true
 
-			# Hop to next tile every UNIT_MOVE_INTERVAL seconds
-			if elapsed >= UNIT_MOVE_INTERVAL:
+			# Hop to next tile on interval
+			if elapsed >= move_interval:
 				unit_move_timers[unit] = 0.0
 				var neighbors = tile_map.get_neighbors(unit.current_tile)
 				var best_tile: Tile = null
 				var best_priority = -1
-				for t in neighbors:
-					if t == null or t.type == Tile.TileType.WATER:
-						continue
-					# Warriors don't enter tiles with enemy units (no combat)
-					if _tile_has_enemy_unit(t, pid):
-						continue
-					var priority = 0
-					if t.owner_id != -1 and t.owner_id != pid:
-						priority = 3  # enemy territory — conquer
-					elif t.owner_id == -1:
-						priority = 2  # unclaimed
-					else:
-						priority = 1  # own (wander)
-					if priority > best_priority:
-						best_priority = priority
-						best_tile = t
+
+				if is_tank:
+					# Tank: defend border — move toward threatened own tiles or enemy-adjacent tiles
+					for t in neighbors:
+						if t == null or t.type == Tile.TileType.WATER:
+							continue
+						if _tile_has_enemy_unit(t, pid):
+							continue
+						var priority = 0
+						# Prefer border tiles (own tiles adjacent to enemy)
+						var near_enemy = false
+						for nb in tile_map.get_neighbors(t):
+							if nb.owner_id != pid and nb.owner_id != -1:
+								near_enemy = true
+								break
+						if t.owner_id == pid and near_enemy:
+							priority = 4  # own border — defend!
+						elif t.owner_id != pid and t.owner_id != -1:
+							priority = 3  # enemy tile adjacent — push back
+						elif t.owner_id == -1:
+							priority = 2  # unclaimed near border
+						else:
+							priority = 1
+						if priority > best_priority:
+							best_priority = priority
+							best_tile = t
+				else:
+					# Warrior: aggressive — push into enemy/unclaimed territory
+					for t in neighbors:
+						if t == null or t.type == Tile.TileType.WATER:
+							continue
+						if _tile_has_enemy_unit(t, pid):
+							continue
+						var priority = 0
+						if t.owner_id != -1 and t.owner_id != pid:
+							priority = 3
+						elif t.owner_id == -1:
+							priority = 2
+						else:
+							priority = 1
+						if priority > best_priority:
+							best_priority = priority
+							best_tile = t
+
 				if best_tile and best_tile != unit.current_tile:
 					unit.current_tile = best_tile
 					territory_manager.conquer_tile(best_tile, pid)
@@ -393,6 +420,7 @@ func _process_units(delta: float) -> void:
 
 	if redraw_needed:
 		tile_map.queue_redraw()
+		_update_scoreboard()
 
 func _start_ai_loop() -> void:
 	ai_timer = Timer.new()
@@ -431,25 +459,27 @@ func _tile_has_enemy_unit(tile: Tile, for_player: int) -> bool:
 				return true
 	return false
 
-func _spawn_unit(tile: Tile, player_id: int, unit_type: int) -> void:
+func _do_spawn_unit(container: Node, tile: Tile, player_id: int, unit_type: int) -> void:
 	var unit_script = preload("res://scripts/entities/unit.gd")
-	var units_container = get_node_or_null("World/Units")
-	if units_container == null:
-		return
 	var unit = unit_script.new()
 	unit.initialize(tile, player_id, unit_type)
 	unit.position = tile_map.grid_to_world(tile.grid_position)
-	units_container.add_child(unit)
+	container.add_child(unit)
 	if not player_units.has(player_id):
 		player_units[player_id] = []
 	player_units[player_id].append(unit)
-	# Claim the tile for this player
+
+func _spawn_unit(tile: Tile, player_id: int, unit_type: int) -> void:
+	var units_container = get_node_or_null("World/Units")
+	if units_container == null:
+		return
+	_do_spawn_unit(units_container, tile, player_id, unit_type)
 	territory_manager.conquer_tile(tile, player_id)
 	tile_map.queue_redraw()
 	_update_scoreboard()
 
 func _on_tile_clicked(tile: Tile) -> void:
-	# Human player spawns a Tank defender on click (on own or unclaimed tile)
+	# Human player spawns a Tank on click
 	if tile.type == Tile.TileType.WATER:
 		return
 	_spawn_unit(tile, HUMAN_PLAYER_ID, 6)  # 6 = TANK
