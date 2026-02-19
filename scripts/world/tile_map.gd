@@ -177,13 +177,19 @@ func _draw() -> void:
 		var center = grid_to_world(tile.grid_position)
 		var points = _get_hex_vertices(center, hex_size)
 		var base_color = _get_tile_color(tile.type)
-		draw_polygon(points, PackedColorArray([base_color]))
-		var border = PackedVector2Array(points)
-		border.append(points[0])
-		draw_polyline(border, base_color.darkened(0.25), 1.0, true)
+		var fill_color: Color
 		if tile.owner_id != -1:
 			var owner_color = _get_player_color(tile.owner_id)
-			draw_polyline(border, owner_color, 5.0, true)
+			fill_color = base_color.lerp(owner_color, 0.45)
+		else:
+			fill_color = base_color
+		draw_polygon(points, PackedColorArray([fill_color]))
+		var border = PackedVector2Array(points)
+		border.append(points[0])
+		draw_polyline(border, fill_color.darkened(0.25), 1.0, true)
+		if tile.owner_id != -1:
+			var owner_color = _get_player_color(tile.owner_id)
+			draw_polyline(border, owner_color, 4.0, true)
 
 	for pos in tiles:
 		var tile: Tile = tiles[pos]

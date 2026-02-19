@@ -21,6 +21,7 @@ var is_training_mode: bool = false
 var ai_timer: Timer
 var cpu_opponents: Array = []
 var player_ids_active: Array = [1, 2, 3]
+var scoreboard: RichTextLabel
 
 func _ready() -> void:
 	# Check if in training mode
@@ -38,6 +39,7 @@ func _ready() -> void:
 	
 	if not is_training_mode:
 		_setup_camera()
+		_setup_scoreboard()
 		
 		# Connect signals for normal gameplay
 		tile_map.tile_clicked.connect(_on_tile_clicked)
@@ -213,6 +215,54 @@ func _input(event: InputEvent) -> void:
 			camera.zoom *= 0.83
 			camera.zoom = camera.zoom.clamp(Vector2(0.1, 0.1), Vector2(4.0, 4.0))
 
+func _setup_scoreboard() -> void:
+	var hud = CanvasLayer.new()
+	hud.name = "HUD"
+	add_child(hud)
+
+	scoreboard = RichTextLabel.new()
+	scoreboard.bbcode_enabled = true
+	scoreboard.fit_content = true
+	scoreboard.position = Vector2(10, 10)
+	scoreboard.size = Vector2(220, 200)
+	scoreboard.add_theme_color_override("default_color", Color.WHITE)
+	scoreboard.add_theme_font_size_override("normal_font_size", 14)
+
+	# Semi-transparent background panel
+	var panel = PanelContainer.new()
+	panel.position = Vector2(8, 8)
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0, 0, 0, 0.6)
+	style.set_corner_radius_all(6)
+	panel.add_theme_stylebox_override("panel", style)
+	panel.add_child(scoreboard)
+	hud.add_child(panel)
+
+func _update_scoreboard() -> void:
+	if scoreboard == null or tile_map == null:
+		return
+	var type_names = ["Grass", "Forest", "Water", "Mountain", "Desert", "Plains"]
+	var player_colors = {1: "ff6666", 2: "6699ff", 3: "66cc66"}
+	var player_tiles: Dictionary = {}
+	for pid in player_ids_active:
+		player_tiles[pid] = {}
+	for pos in tile_map.tiles:
+		var tile = tile_map.tiles[pos]
+		if tile.owner_id in player_tiles:
+			var t = tile.type
+			player_tiles[tile.owner_id][t] = player_tiles[tile.owner_id].get(t, 0) + 1
+	var text = "[b]SCOREBOARD[/b]\n"
+	for pid in player_ids_active:
+		var col = player_colors.get(pid, "ffffff")
+		var total = 0
+		for cnt in player_tiles[pid].values():
+			total += cnt
+		text += "[color=#%s]■ Player %d[/color]  %d tiles\n" % [col, pid, total]
+		for t_type in player_tiles[pid]:
+			var name = type_names[t_type] if t_type < type_names.size() else "?"
+			text += "  %s: %d\n" % [name, player_tiles[pid][t_type]]
+	scoreboard.text = text
+
 func _start_ai_loop() -> void:
 	ai_timer = Timer.new()
 	ai_timer.wait_time = 1.5
@@ -237,6 +287,7 @@ func _on_ai_tick() -> void:
 				best_tile = t
 		territory_manager.claim_tile(best_tile, player_id)
 	tile_map.queue_redraw()
+	_update_scoreboard()
 
 func _on_tile_clicked(tile: Tile) -> void:
 	print("Tile clicked: ", tile.grid_position, " Type: ", tile.type)
