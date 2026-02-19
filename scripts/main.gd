@@ -29,6 +29,8 @@ func _ready() -> void:
 	# Initialize core systems
 	_setup_map()
 	_setup_systems()
+	if not is_training_mode:
+		_setup_players()
 	
 	if not is_training_mode:
 		_setup_camera()
@@ -84,6 +86,8 @@ func _setup_map() -> void:
 	
 	tile_map = tile_map_script.new()
 	tile_map_container.add_child(tile_map)
+	tile_map.generate()
+	tile_map.queue_redraw()
 
 func _setup_systems() -> void:
 	# Territory management
@@ -109,6 +113,45 @@ func _setup_camera() -> void:
 		camera = get_node_or_null("Camera2D")
 	if camera:
 		camera.position = Vector2(640, 360)  # Center of default viewport
+
+func _setup_players() -> void:
+	if tile_map == null or territory_manager == null:
+		return
+
+	var candidates: Array[Tile] = []
+	for pos in tile_map.tiles:
+		var tile: Tile = tile_map.tiles[pos]
+		if tile.can_build_settlement() and not tile.is_owned():
+			candidates.append(tile)
+
+	if candidates.is_empty():
+		return
+
+	candidates.shuffle()
+	var player_ids = [1, 2, 3]
+	var settlements_container = get_node_or_null("World/Settlements")
+
+	for i in range(min(player_ids.size(), candidates.size())):
+		var player_id = player_ids[i]
+		var start_tile = candidates[i]
+		territory_manager.claim_starting_tile(player_id, start_tile)
+
+		var settlement = preload("res://scripts/entities/settlement.gd").new()
+		settlement.initialize(start_tile, player_id, "AI %d" % player_id)
+		settlement.set_ai_difficulty("easy")
+		if settlements_container:
+			settlements_container.add_child(settlement)
+		else:
+			add_child(settlement)
+
+		territory_manager.register_settlement(settlement, player_id)
+		if skill_tree:
+			skill_tree.initialize_player(player_id)
+		if progression_system:
+			progression_system.initialize_player(player_id)
+
+	if tile_map:
+		tile_map.queue_redraw()
 
 func _input(event: InputEvent) -> void:
 	if camera == null:

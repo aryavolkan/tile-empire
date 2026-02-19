@@ -119,11 +119,11 @@ func get_production_yield() -> int:
 	return base_yield
 
 static func get_distance(from: Vector2i, to: Vector2i) -> int:
-	# Hex distance using axial coordinates (odd-q offset)
-	var ax = from.x
-	var ay = from.y - (from.x - (from.x & 1)) / 2
-	var bx = to.x
-	var by = to.y - (to.x - (to.x & 1)) / 2
+	# Hex distance using axial coordinates (odd-r offset)
+	var ax = from.x - (from.y - (from.y & 1)) / 2
+	var ay = from.y
+	var bx = to.x - (to.y - (to.y & 1)) / 2
+	var by = to.y
 	return int((abs(ax - bx) + abs(ax + ay - bx - by) + abs(ay - by)) / 2)
 
 func get_gold_yield() -> int:

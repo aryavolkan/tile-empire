@@ -22,7 +22,7 @@ signal territory_changed(player_id: int, tiles: Array[Tile])
 
 @export var map_width: int = 50
 @export var map_height: int = 50
-@export var hex_size: float = 64.0
+@export var hex_size: float = 32.0
 @export var tile_scene: PackedScene
 
 var tiles: Dictionary = {}  # Key: Vector2i, Value: Tile
@@ -40,23 +40,23 @@ var _terrain_noise: FastNoiseLite
 var _map_seed: int = 42
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
-# Hex neighbor offsets for offset coordinates (flat-top, odd-q offset)
-# Even columns and odd columns have different neighbor offsets
-const HEX_NEIGHBORS_EVEN_COL = [
-	Vector2i(1, -1),  # NE
-	Vector2i(1, 0),   # SE
-	Vector2i(0, 1),   # S
-	Vector2i(-1, 0),  # SW
-	Vector2i(-1, -1), # NW
-	Vector2i(0, -1),  # N
-]
-const HEX_NEIGHBORS_ODD_COL = [
-	Vector2i(1, 0),   # NE
-	Vector2i(1, 1),   # SE
-	Vector2i(0, 1),   # S
+# Hex neighbor offsets for offset coordinates (pointy-top, odd-r offset)
+# Even rows and odd rows have different neighbor offsets
+const HEX_NEIGHBORS_EVEN_ROW = [
+	Vector2i(1, 0),   # E
+	Vector2i(0, 1),   # SE
 	Vector2i(-1, 1),  # SW
-	Vector2i(-1, 0),  # NW
-	Vector2i(0, -1),  # N
+	Vector2i(-1, 0),  # W
+	Vector2i(-1, -1), # NW
+	Vector2i(0, -1),  # NE
+]
+const HEX_NEIGHBORS_ODD_ROW = [
+	Vector2i(1, 0),   # E
+	Vector2i(1, 1),   # SE
+	Vector2i(0, 1),   # SW
+	Vector2i(-1, 0),  # W
+	Vector2i(0, -1),  # NW
+	Vector2i(1, -1),  # NE
 ]
 
 func _ready() -> void:
@@ -65,14 +65,14 @@ func _ready() -> void:
 	territory_overlay = Node2D.new()
 	add_child(territory_overlay)
 	
-	_generate_map()
+	generate()
 
 func _init_hex_dimensions() -> void:
-	# Calculate hex dimensions for flat-top hexagons
-	hex_width = hex_size * 2
-	hex_height = sqrt(3) * hex_size
-	hex_horiz_spacing = hex_width * 3.0 / 4.0
-	hex_vert_spacing = hex_height
+	# Calculate hex dimensions for pointy-top hexagons
+	hex_width = sqrt(3) * hex_size
+	hex_height = hex_size * 2
+	hex_horiz_spacing = hex_width
+	hex_vert_spacing = hex_size * 1.5
 
 func set_seed(seed_value: int) -> void:
 	_map_seed = seed_value
@@ -85,6 +85,7 @@ func generate() -> void:
 		tile_nodes[key].queue_free()
 	tile_nodes.clear()
 	_generate_map()
+	queue_redraw()
 
 func _generate_map() -> void:
 	# Set up noise
@@ -132,16 +133,94 @@ func _get_terrain_type(x: int, y: int) -> Tile.TileType:
 	else:
 		return Tile.TileType.DESERT if _rng.randf() > 0.5 else Tile.TileType.TUNDRA
 
+func _get_tile_color(tile_type: Tile.TileType) -> Color:
+	match tile_type:
+		Tile.TileType.GRASSLAND:
+			return Color(0.2, 0.7, 0.2)
+		Tile.TileType.WATER:
+			return Color(0.1, 0.4, 0.8)
+		Tile.TileType.DESERT:
+			return Color(0.9, 0.8, 0.4)
+		Tile.TileType.FOREST:
+			return Color(0.0, 0.4, 0.0)
+		Tile.TileType.MOUNTAIN:
+			return Color(0.5, 0.5, 0.5)
+		Tile.TileType.TUNDRA:
+			return Color(0.6, 0.8, 0.6)
+		_:
+			return Color(0.4, 0.7, 0.4)
+
+func _get_player_color(player_id: int) -> Color:
+	var palette = [
+		Color(0.9, 0.2, 0.2),
+		Color(0.2, 0.6, 0.9),
+		Color(0.9, 0.6, 0.2),
+		Color(0.7, 0.2, 0.7),
+	]
+	if player_id < 0:
+		return Color.WHITE
+	return palette[player_id % palette.size()]
+
+func _get_hex_vertices(center: Vector2, size: float) -> PackedVector2Array:
+	var points = PackedVector2Array()
+	for i in range(6):
+		var angle = PI / 3.0 * i - PI / 6.0
+		points.append(center + Vector2(size * cos(angle), size * sin(angle)))
+	return points
+
+func _draw() -> void:
+	if tiles.is_empty():
+		return
+
+	for pos in tiles:
+		var tile: Tile = tiles[pos]
+		var center = grid_to_world(tile.grid_position)
+		var points = _get_hex_vertices(center, hex_size)
+		var base_color = _get_tile_color(tile.type)
+		draw_polygon(points, PackedColorArray([base_color]))
+		var border = PackedVector2Array(points)
+		border.append(points[0])
+		draw_polyline(border, base_color.darkened(0.2), 1.0, true)
+		if tile.owner_id != -1:
+			var owner_color = _get_player_color(tile.owner_id)
+			draw_polyline(border, owner_color, 2.0, true)
+
+	for pos in tiles:
+		var tile: Tile = tiles[pos]
+		if tile.settlement_id != -1:
+			var center = grid_to_world(tile.grid_position)
+			draw_circle(center, 6.0, Color.WHITE)
+
+	var world = get_parent()
+	if world and world.name != "World":
+		world = world.get_parent()
+	if world:
+		var units_node = world.get_node_or_null("Units")
+		if units_node:
+			for unit in units_node.get_children():
+				if unit is Unit:
+					var center = unit.position
+					if unit.current_tile:
+						center = grid_to_world(unit.current_tile.grid_position)
+					var tri_size = 6.0
+					var triangle = PackedVector2Array([
+						center + Vector2(0, -tri_size),
+						center + Vector2(tri_size, tri_size),
+						center + Vector2(-tri_size, tri_size),
+					])
+					var unit_color = _get_player_color(unit.owner_id)
+					draw_polygon(triangle, PackedColorArray([unit_color]))
+
 func grid_to_world(grid_pos: Vector2i) -> Vector2:
-	# Convert hex grid coordinates to world position (flat-top)
-	var x = hex_horiz_spacing * grid_pos.x
-	var y = hex_vert_spacing * (grid_pos.y + 0.5 * (grid_pos.x & 1))
+	# Convert hex grid coordinates to world position (pointy-top, odd-r)
+	var x = hex_size * sqrt(3) * (grid_pos.x + 0.5 * (grid_pos.y & 1))
+	var y = hex_size * 1.5 * grid_pos.y
 	return Vector2(x, y)
 
 func world_to_grid(world_pos: Vector2) -> Vector2i:
-	# Convert world position to hex grid coordinates
-	var q = (2.0 / 3.0 * world_pos.x) / hex_size
-	var r = (-1.0 / 3.0 * world_pos.x + sqrt(3) / 3.0 * world_pos.y) / hex_size
+	# Convert world position to hex grid coordinates (pointy-top axial -> odd-r)
+	var q = (sqrt(3) / 3.0 * world_pos.x - 1.0 / 3.0 * world_pos.y) / hex_size
+	var r = (2.0 / 3.0 * world_pos.y) / hex_size
 	return axial_to_offset(hex_round(Vector2(q, r)))
 
 func hex_round(hex: Vector2) -> Vector2:
@@ -161,15 +240,15 @@ func hex_round(hex: Vector2) -> Vector2:
 	return Vector2(rx, ry)
 
 func offset_to_axial(offset: Vector2i) -> Vector2:
-	# Odd-q offset to axial (flat-top)
-	var q = offset.x
-	var r = offset.y - (offset.x - (offset.x & 1)) / 2
+	# Odd-r offset to axial (pointy-top)
+	var q = offset.x - (offset.y - (offset.y & 1)) / 2
+	var r = offset.y
 	return Vector2(q, r)
 
 func axial_to_offset(axial: Vector2) -> Vector2i:
-	# Axial to odd-q offset (flat-top)
-	var col = int(round(axial.x))
-	var row = int(round(axial.y)) + (col - (col & 1)) / 2
+	# Axial to odd-r offset (pointy-top)
+	var row = int(round(axial.y))
+	var col = int(round(axial.x + (row - (row & 1)) / 2))
 	return Vector2i(col, row)
 
 func get_tile(grid_pos: Vector2i) -> Tile:
@@ -178,10 +257,10 @@ func get_tile(grid_pos: Vector2i) -> Tile:
 func get_neighbors(tile: Tile) -> Array[Tile]:
 	var neighbors: Array[Tile] = []
 	var directions: Array
-	if tile.grid_position.x & 1 == 0:
-		directions = HEX_NEIGHBORS_EVEN_COL
+	if tile.grid_position.y & 1 == 0:
+		directions = HEX_NEIGHBORS_EVEN_ROW
 	else:
-		directions = HEX_NEIGHBORS_ODD_COL
+		directions = HEX_NEIGHBORS_ODD_ROW
 	for dir in directions:
 		var neighbor_pos = tile.grid_position + dir
 		var neighbor = get_tile(neighbor_pos)
