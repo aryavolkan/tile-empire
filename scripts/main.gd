@@ -188,6 +188,8 @@ var resource_timer: float = 0.0
 var resource_label: RichTextLabel
 
 func _process(delta: float) -> void:
+	if is_training_mode:
+		return
 	# Camera pan
 	if camera:
 		var pan_speed = 400.0 / camera.zoom.x
@@ -214,6 +216,8 @@ func _process(delta: float) -> void:
 		_process_units(delta)
 
 func _input(event: InputEvent) -> void:
+	if is_training_mode:
+		return
 	if camera == null:
 		return
 	
