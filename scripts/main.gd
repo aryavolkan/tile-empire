@@ -224,42 +224,58 @@ func _setup_scoreboard() -> void:
 	# Background
 	var bg = ColorRect.new()
 	bg.position = Vector2(8, 8)
-	bg.size = Vector2(230, 220)
-	bg.color = Color(0, 0, 0, 0.65)
+	bg.size = Vector2(245, 320)
+	bg.color = Color(0, 0, 0, 0.70)
 	hud.add_child(bg)
 
 	scoreboard = RichTextLabel.new()
 	scoreboard.bbcode_enabled = true
 	scoreboard.position = Vector2(12, 12)
-	scoreboard.size = Vector2(222, 212)
+	scoreboard.size = Vector2(237, 308)
 	scoreboard.scroll_active = false
 	scoreboard.add_theme_color_override("default_color", Color.WHITE)
 	scoreboard.add_theme_font_size_override("normal_font_size", 14)
 	hud.add_child(scoreboard)
 
+## Must match tile_map.gd PLAYER_PALETTE exactly (as hex strings)
+const SCORE_PLAYER_COLORS = {
+	1: "d926d9",  # magenta
+	2: "ff8000",  # orange
+	3: "0de6be",  # cyan
+	4: "f2e619",  # yellow
+}
+## Terrain type info: name + buff description
+const TILE_INFO = {
+	0: ["Grassland", "+Food"],
+	1: ["Forest",    "+Production"],
+	2: ["Mountain",  "+Defense/Stone"],
+	3: ["Water",     "Impassable"],
+	4: ["Desert",    "+Gold"],
+	5: ["Tundra",    "+Cold Resist"],
+}
+
 func _update_scoreboard() -> void:
 	if scoreboard == null or tile_map == null:
 		return
-	var type_names = ["Grass", "Forest", "Water", "Mountain", "Desert", "Plains"]
-	var player_colors = {1: "ff6666", 2: "6699ff", 3: "66cc66"}
 	var player_tiles: Dictionary = {}
 	for pid in player_ids_active:
 		player_tiles[pid] = {}
 	for pos in tile_map.tiles:
 		var tile = tile_map.tiles[pos]
 		if tile.owner_id in player_tiles:
-			var t = tile.type
+			var t = int(tile.type)
 			player_tiles[tile.owner_id][t] = player_tiles[tile.owner_id].get(t, 0) + 1
-	var text = "[b]SCOREBOARD[/b]\n"
+
+	var text = "[b]── SCOREBOARD ──[/b]\n"
 	for pid in player_ids_active:
-		var col = player_colors.get(pid, "ffffff")
+		var col = SCORE_PLAYER_COLORS.get(pid, "ffffff")
 		var total = 0
 		for cnt in player_tiles[pid].values():
 			total += cnt
-		text += "[color=#%s]■ Player %d[/color]  %d tiles\n" % [col, pid, total]
+		text += "\n[color=#%s][b]▮ Player %d[/b][/color]  [b]%d tiles[/b]\n" % [col, pid, total]
 		for t_type in player_tiles[pid]:
-			var name = type_names[t_type] if t_type < type_names.size() else "?"
-			text += "  %s: %d\n" % [name, player_tiles[pid][t_type]]
+			var info = TILE_INFO.get(t_type, ["?", ""])
+			text += "  [color=#aaaaaa]%s[/color] [color=#ffdd88]%s[/color]: %d\n" % [info[0], info[1], player_tiles[pid][t_type]]
 	scoreboard.text = text
 
 func _start_ai_loop() -> void:

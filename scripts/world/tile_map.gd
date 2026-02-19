@@ -133,33 +133,30 @@ func _get_terrain_type(x: int, y: int) -> Tile.TileType:
 	else:
 		return Tile.TileType.DESERT if _rng.randf() > 0.5 else Tile.TileType.TUNDRA
 
+## Terrain colors — muted/earthy so player overlays pop
 func _get_tile_color(tile_type: Tile.TileType) -> Color:
 	match tile_type:
-		Tile.TileType.GRASSLAND:
-			return Color(0.2, 0.7, 0.2)
-		Tile.TileType.WATER:
-			return Color(0.1, 0.4, 0.8)
-		Tile.TileType.DESERT:
-			return Color(0.9, 0.8, 0.4)
-		Tile.TileType.FOREST:
-			return Color(0.0, 0.4, 0.0)
-		Tile.TileType.MOUNTAIN:
-			return Color(0.5, 0.5, 0.5)
-		Tile.TileType.TUNDRA:
-			return Color(0.6, 0.8, 0.6)
-		_:
-			return Color(0.4, 0.7, 0.4)
+		Tile.TileType.GRASSLAND:  return Color(0.45, 0.62, 0.32)  # olive green
+		Tile.TileType.FOREST:     return Color(0.18, 0.32, 0.16)  # dark moss
+		Tile.TileType.MOUNTAIN:   return Color(0.50, 0.47, 0.42)  # stone brown
+		Tile.TileType.WATER:      return Color(0.18, 0.38, 0.58)  # deep blue
+		Tile.TileType.DESERT:     return Color(0.78, 0.65, 0.35)  # sandy brown
+		Tile.TileType.TUNDRA:     return Color(0.70, 0.78, 0.80)  # icy blue-grey
+		_:                        return Color(0.45, 0.55, 0.40)
 
+## Player colors — vivid, clash-proof with terrain palette
+## Index 0 = unused, 1-4 = players
+const PLAYER_PALETTE = [
+	Color(1.0, 1.0, 1.0),        # 0 unused
+	Color(0.85, 0.15, 0.85),     # 1 magenta/purple
+	Color(1.00, 0.50, 0.05),     # 2 vivid orange
+	Color(0.05, 0.90, 0.75),     # 3 cyan/teal
+	Color(0.95, 0.90, 0.10),     # 4 yellow
+]
 func _get_player_color(player_id: int) -> Color:
-	var palette = [
-		Color(0.9, 0.2, 0.2),
-		Color(0.2, 0.6, 0.9),
-		Color(0.9, 0.6, 0.2),
-		Color(0.7, 0.2, 0.7),
-	]
-	if player_id < 0:
+	if player_id <= 0:
 		return Color.WHITE
-	return palette[player_id % palette.size()]
+	return PLAYER_PALETTE[player_id % PLAYER_PALETTE.size()]
 
 func _get_hex_vertices(center: Vector2, size: float) -> PackedVector2Array:
 	var points = PackedVector2Array()
