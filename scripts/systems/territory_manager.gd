@@ -181,14 +181,15 @@ func claim_tile(tile: Tile, player_id: int) -> bool:
 	# Alias for expand_territory used by AI
 	return expand_territory(player_id, tile)
 
+signal tile_conquered(conqueror_id: int, prev_owner: int, tile: Tile)
+
 func conquer_tile(tile: Tile, conqueror_id: int) -> bool:
-	# Warriors can take any non-water tile, including enemy-owned ones
+	# Warriors/tanks can take any non-water tile, including enemy-owned ones
 	if tile.type == Tile.TileType.WATER:
 		return false
 	if tile.owner_id == conqueror_id:
 		return false  # already ours
 
-	# Remove from previous owner's territory list
 	var prev_owner = tile.owner_id
 	if prev_owner != -1 and player_territories.has(prev_owner):
 		player_territories[prev_owner].erase(tile)
@@ -200,6 +201,7 @@ func conquer_tile(tile: Tile, conqueror_id: int) -> bool:
 		player_territories[conqueror_id].append(tile)
 
 	territory_expanded.emit(conqueror_id, [tile])
+	tile_conquered.emit(conqueror_id, prev_owner, tile)
 	return true
 
 func get_threatened_border_tiles(player_id: int) -> Array:

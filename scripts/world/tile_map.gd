@@ -26,6 +26,7 @@ signal territory_changed(player_id: int, tiles: Array[Tile])
 @export var tile_scene: PackedScene
 
 var tiles: Dictionary = {}  # Key: Vector2i, Value: Tile
+var active_flashes: Array = []  # [{from, to, ttl}] shoot lines from main.gd
 var tile_nodes: Dictionary = {}  # Key: Vector2i, Value: Node2D
 var territory_overlay: Node2D
 
@@ -235,6 +236,12 @@ func _draw() -> void:
 						var tri_border = PackedVector2Array(triangle)
 						tri_border.append(triangle[0])
 						draw_polyline(tri_border, Color.BLACK, 2.0, true)
+
+	# Shoot flash lines
+	for flash in active_flashes:
+		var alpha = clamp(flash.ttl / 0.18, 0.0, 1.0)
+		draw_line(flash.from, flash.to, Color(1.0, 1.0, 0.2, alpha), 3.0, true)
+		draw_circle(flash.to, 6.0, Color(1.0, 0.3, 0.0, alpha))
 
 func grid_to_world(grid_pos: Vector2i) -> Vector2:
 	# Convert hex grid coordinates to world position (pointy-top, odd-r)

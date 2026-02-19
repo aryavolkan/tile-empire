@@ -44,6 +44,7 @@ func _ready() -> void:
 		# Connect signals for normal gameplay
 		tile_map.tile_clicked.connect(_on_tile_clicked)
 		territory_manager.territory_expanded.connect(_on_territory_expanded)
+		territory_manager.tile_conquered.connect(_on_tile_conquered)
 		skill_tree.skill_unlocked.connect(_on_skill_unlocked)
 		progression_system.empire_stage_changed.connect(_on_empire_stage_changed)
 	else:
@@ -171,6 +172,11 @@ const WARRIOR_SPEED = 90.0   # pixels per second
 const TANK_SPEED = 45.0      # tanks move at half warrior speed
 
 var unit_target_tile: Dictionary = {}  # unit -> Tile (next destination)
+var recently_lost: Array[Tile] = []    # tiles recently stolen from us — tanks reclaim
+const TANK_SHOOT_RANGE = 180.0        # px — tanks kill enemy warriors in this radius
+const TANK_SHOOT_COOLDOWN = 2.5       # seconds between shots per tank
+var tank_shoot_timers: Dictionary = {} # tank -> float
+var shoot_flashes: Array = []          # [{from, to, ttl}] for visual feedback
 
 # Human player resources
 var res_food: float = 20.0
@@ -407,21 +413,39 @@ func _pick_next_tile(unit: Node, pid: int, is_tank: bool) -> Tile:
 		var base_score = 0.0
 
 		if is_tank:
-			# Tank: defend own border tiles
-			var near_enemy = false
-			for nb in tile_map.get_neighbors(t):
-				if nb.owner_id != pid and nb.owner_id != -1:
-					near_enemy = true
-					break
-			if t.owner_id == pid and near_enemy:
-				base_score = 40.0
-			elif t.owner_id != pid and t.owner_id != -1:
-				base_score = 30.0
-			elif t.owner_id == -1:
-				base_score = 20.0
+			# Check if enemy warrior is in shoot range (tank prefers staying to fire)
+			var enemy_in_range = false
+			for epid in player_units:
+				if epid == pid: continue
+				for eu in player_units[epid]:
+					if is_instance_valid(eu) and eu.unit_type != 6:
+						if unit.position.distance_to(eu.position) < TANK_SHOOT_RANGE * 0.9:
+							enemy_in_range = true
+							break
+				if enemy_in_range: break
+
+			if enemy_in_range:
+				# Hold position — prefer staying on own tile
+				base_score = 5.0 if t == unit.current_tile else 1.0
 			else:
-				base_score = 5.0
-			# Tanks also spread out among themselves
+				# No enemies near — reclaim recently lost tiles first
+				if t in recently_lost:
+					base_score = 60.0
+				else:
+					var near_enemy = false
+					for nb in tile_map.get_neighbors(t):
+						if nb.owner_id != pid and nb.owner_id != -1:
+							near_enemy = true
+							break
+					if t.owner_id == pid and near_enemy:
+						base_score = 40.0
+					elif t.owner_id != pid and t.owner_id != -1:
+						base_score = 30.0
+					elif t.owner_id == -1:
+						base_score = 20.0
+					else:
+						base_score = 5.0
+			# Spread tanks out
 			var fdist = _min_friendly_dist(t_world, pid, unit)
 			if fdist < INF:
 				base_score += clamp(fdist / 100.0, 0.0, 10.0)
@@ -444,6 +468,32 @@ func _pick_next_tile(unit: Node, pid: int, is_tank: bool) -> Tile:
 
 	return best_tile
 
+func _tank_shoot(tank: Node, pid: int) -> bool:
+	# Scan all enemy warriors within range — kill the closest
+	var closest_dist = TANK_SHOOT_RANGE
+	var target_unit: Node = null
+	for epid in player_units:
+		if epid == pid:
+			continue
+		for eu in player_units[epid]:
+			if not is_instance_valid(eu):
+				continue
+			if eu.unit_type == 6:  # skip enemy tanks
+				continue
+			var d = tank.position.distance_to(eu.position)
+			if d < closest_dist:
+				closest_dist = d
+				target_unit = eu
+	if target_unit:
+		shoot_flashes.append({"from": tank.position, "to": target_unit.position, "ttl": 0.18})
+		var epid = target_unit.owner_id
+		player_units[epid].erase(target_unit)
+		unit_target_tile.erase(target_unit)
+		tank_shoot_timers.erase(target_unit)
+		target_unit.queue_free()
+		return true
+	return false
+
 func _process_units(delta: float) -> void:
 	var redraw_needed = false
 	for pid in player_ids_active:
@@ -453,6 +503,15 @@ func _process_units(delta: float) -> void:
 				continue
 			var is_tank = (unit.unit_type == 6)
 			var speed = TANK_SPEED if is_tank else WARRIOR_SPEED
+
+			# Tank: shoot nearby enemy warriors on cooldown
+			if is_tank:
+				var cooldown = tank_shoot_timers.get(unit, 0.0) - delta
+				tank_shoot_timers[unit] = cooldown
+				if cooldown <= 0.0:
+					if _tank_shoot(unit, pid):
+						tank_shoot_timers[unit] = TANK_SHOOT_COOLDOWN
+						redraw_needed = true
 
 			# Get or pick target tile
 			var target_tile: Tile = unit_target_tile.get(unit, unit.current_tile)
@@ -478,8 +537,17 @@ func _process_units(delta: float) -> void:
 				else:
 					unit_target_tile[unit] = unit.current_tile
 
+	# Tick down shoot flashes
+	var i = shoot_flashes.size() - 1
+	while i >= 0:
+		shoot_flashes[i].ttl -= delta
+		if shoot_flashes[i].ttl <= 0:
+			shoot_flashes.remove_at(i)
+		i -= 1
+
 	# Always redraw when any unit exists (smooth motion needs every-frame repaint)
 	if not player_units.is_empty():
+		tile_map.active_flashes = shoot_flashes
 		tile_map.queue_redraw()
 	if redraw_needed:
 		_update_scoreboard()
@@ -585,8 +653,18 @@ func _spawn_unit(tile: Tile, player_id: int, unit_type: int) -> void:
 func _on_tile_clicked(_tile: Tile) -> void:
 	pass  # click no longer spawns units
 
-func _on_territory_expanded(player_id: int, new_tiles: Array) -> void:
-	print("Player ", player_id, " expanded territory by ", new_tiles.size(), " tiles")
+func _on_territory_expanded(_player_id: int, _new_tiles: Array) -> void:
+	pass
+
+func _on_tile_conquered(conqueror_id: int, prev_owner: int, tile: Tile) -> void:
+	if prev_owner == HUMAN_PLAYER_ID and conqueror_id != HUMAN_PLAYER_ID:
+		# Enemy stole our tile — mark for recapture
+		if tile not in recently_lost:
+			recently_lost.append(tile)
+			if recently_lost.size() > 20:
+				recently_lost.pop_front()
+	elif conqueror_id == HUMAN_PLAYER_ID and tile in recently_lost:
+		recently_lost.erase(tile)
 
 func _on_skill_unlocked(skill_id: String, player_id: int) -> void:
 	print("Player ", player_id, " unlocked skill: ", skill_id)
