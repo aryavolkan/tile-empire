@@ -197,6 +197,55 @@ func register_settlement(settlement: Node, player_id: int) -> void:
 		player_territories[player_id] = []
 		expansion_costs[player_id] = BASE_EXPANSION_COST
 
+func get_enemy_border_tiles(player_id: int) -> Array[Tile]:
+	## Returns enemy-owned tiles adjacent to this player's territory (contestable).
+	var result: Array[Tile] = []
+	var territory = player_territories.get(player_id, [])
+	var checked = {}
+	for owned_tile in territory:
+		for neighbor in owned_tile.neighbors:
+			if checked.has(neighbor.grid_position):
+				continue
+			checked[neighbor.grid_position] = true
+			if neighbor.type == Tile.TileType.WATER:
+				continue
+			if neighbor.is_owned() and neighbor.owner_id != player_id:
+				result.append(neighbor)
+	return result
+
+func contest_enemy_tile(player_id: int, tile: Tile) -> bool:
+	## Contest an enemy-owned border tile: transfer ownership to player_id.
+	if tile.type == Tile.TileType.WATER:
+		return false
+	if not tile.is_owned() or tile.owner_id == player_id:
+		return false
+	# Must be adjacent to player's territory
+	var adjacent = false
+	for neighbor in tile.neighbors:
+		if neighbor.owner_id == player_id:
+			adjacent = true
+			break
+	if not adjacent:
+		return false
+
+	var prev_owner = tile.owner_id
+	if player_territories.has(prev_owner):
+		player_territories[prev_owner].erase(tile)
+
+	tile.set_owner(player_id)
+	if not player_territories.has(player_id):
+		player_territories[player_id] = []
+	if not player_territories[player_id].has(tile):
+		player_territories[player_id].append(tile)
+
+	expansion_costs[player_id] = int(get_expansion_cost(player_id) * EXPANSION_COST_MULTIPLIER)
+	_check_border_conflicts(player_id, tile)
+	tile_map.reveal_tiles_around(tile.grid_position, 1, player_id)
+
+	territory_expanded.emit(player_id, [tile])
+	territory_lost.emit(prev_owner, [tile])
+	return true
+
 func get_adjacent_unowned_tiles(world_position: Vector2, player_id: int) -> Array:
 	# Get unowned tiles adjacent to player's territory (used by AI)
 	return get_expandable_tiles(player_id)

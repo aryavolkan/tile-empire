@@ -563,6 +563,18 @@ func _on_ai_tick() -> void:
 			continue
 		var expandable = territory_manager.get_expandable_tiles(player_id)
 		if expandable.is_empty():
+			# No unowned tiles — contest enemy border tiles as fallback
+			var enemy_tiles = territory_manager.get_enemy_border_tiles(player_id)
+			if enemy_tiles.is_empty():
+				continue
+			var best_tile: Tile = enemy_tiles[0]
+			var best_score = -1.0
+			for t in enemy_tiles:
+				var score = t.get_food_yield() + t.get_production_yield() + t.get_gold_yield()
+				if score > best_score:
+					best_score = score
+					best_tile = t
+			territory_manager.contest_enemy_tile(player_id, best_tile)
 			continue
 		var best_tile: Tile = expandable[0]
 		var best_score = -1.0
