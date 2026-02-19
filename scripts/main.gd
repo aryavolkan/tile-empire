@@ -174,8 +174,7 @@ const TANK_SPEED = 45.0      # tanks move at half warrior speed
 var unit_target_tile: Dictionary = {}  # unit -> Tile (next destination)
 var recently_lost: Array[Tile] = []    # tiles recently stolen from us — tanks reclaim
 const TANK_SHOOT_RANGE = 180.0        # px — tanks kill enemy warriors in this radius
-const TANK_SHOOT_COOLDOWN = 2.5       # seconds between shots per tank
-var tank_shoot_timers: Dictionary = {} # tank -> float
+var tank_has_fired: Dictionary = {}    # tank -> true once it uses its single shot
 var shoot_flashes: Array = []          # [{from, to, ttl}] for visual feedback
 
 # Human player resources
@@ -489,7 +488,7 @@ func _tank_shoot(tank: Node, pid: int) -> bool:
 		var epid = target_unit.owner_id
 		player_units[epid].erase(target_unit)
 		unit_target_tile.erase(target_unit)
-		tank_shoot_timers.erase(target_unit)
+		tank_has_fired[tank] = true   # one shot only — tank is now spent
 		target_unit.queue_free()
 		return true
 	return false
@@ -504,14 +503,10 @@ func _process_units(delta: float) -> void:
 			var is_tank = (unit.unit_type == 6)
 			var speed = TANK_SPEED if is_tank else WARRIOR_SPEED
 
-			# Tank: shoot nearby enemy warriors on cooldown
-			if is_tank:
-				var cooldown = tank_shoot_timers.get(unit, 0.0) - delta
-				tank_shoot_timers[unit] = cooldown
-				if cooldown <= 0.0:
-					if _tank_shoot(unit, pid):
-						tank_shoot_timers[unit] = TANK_SHOOT_COOLDOWN
-						redraw_needed = true
+			# Tank: one shot only — fires once at the first enemy warrior in range
+			if is_tank and not tank_has_fired.get(unit, false):
+				if _tank_shoot(unit, pid):
+					redraw_needed = true
 
 			# Get or pick target tile
 			var target_tile: Tile = unit_target_tile.get(unit, unit.current_tile)
