@@ -104,6 +104,7 @@ func _generate_map() -> void:
 			# Create tile resource
 			var tile_type = _get_terrain_type(x, y)
 			var tile = Tile.new(grid_pos, tile_type)
+			tile._assign_resources(_rng)
 			tile.world_position = world_pos
 			tiles[grid_pos] = tile
 			
