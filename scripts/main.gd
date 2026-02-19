@@ -167,21 +167,31 @@ func _setup_players() -> void:
 	_update_scoreboard()
 	_start_ai_loop()
 
+const UNIT_SPEED = 80.0       # pixels per second
+const UNIT_MOVE_INTERVAL = 0.8  # seconds between tile hops
+const UNIT_ATTACK_RANGE = 60.0  # pixels — within this, try to attack
+
+var unit_move_timers: Dictionary = {}  # unit -> float elapsed
+
 func _process(delta: float) -> void:
-	if camera == null:
-		return
-	var pan_speed = 400.0 / camera.zoom.x
-	var move = Vector2.ZERO
-	if Input.is_key_pressed(KEY_LEFT) or Input.is_key_pressed(KEY_A):
-		move.x -= 1
-	if Input.is_key_pressed(KEY_RIGHT) or Input.is_key_pressed(KEY_D):
-		move.x += 1
-	if Input.is_key_pressed(KEY_UP) or Input.is_key_pressed(KEY_W):
-		move.y -= 1
-	if Input.is_key_pressed(KEY_DOWN) or Input.is_key_pressed(KEY_S):
-		move.y += 1
-	if move != Vector2.ZERO:
-		camera.position += move.normalized() * pan_speed * delta
+	# Camera pan
+	if camera:
+		var pan_speed = 400.0 / camera.zoom.x
+		var move = Vector2.ZERO
+		if Input.is_key_pressed(KEY_LEFT) or Input.is_key_pressed(KEY_A):
+			move.x -= 1
+		if Input.is_key_pressed(KEY_RIGHT) or Input.is_key_pressed(KEY_D):
+			move.x += 1
+		if Input.is_key_pressed(KEY_UP) or Input.is_key_pressed(KEY_W):
+			move.y -= 1
+		if Input.is_key_pressed(KEY_DOWN) or Input.is_key_pressed(KEY_S):
+			move.y += 1
+		if move != Vector2.ZERO:
+			camera.position += move.normalized() * pan_speed * delta
+
+	# Real-time unit logic
+	if tile_map and territory_manager:
+		_process_units(delta)
 
 func _input(event: InputEvent) -> void:
 	if camera == null:
@@ -318,34 +328,52 @@ func _spawn_starting_units() -> void:
 		units_container.add_child(unit)
 		player_units[pid] = [unit]
 
-func _move_units() -> void:
+func _process_units(delta: float) -> void:
+	var redraw_needed = false
 	for pid in player_ids_active:
 		var units = player_units.get(pid, [])
 		for unit in units:
 			if not is_instance_valid(unit) or unit.current_tile == null:
 				continue
-			# Move toward nearest enemy tile
-			var neighbors = tile_map.get_neighbors(unit.current_tile)
-			var best_tile: Tile = null
-			var best_priority = -1
-			for t in neighbors:
-				if t == null or t.type == Tile.TileType.WATER:
-					continue
-				var priority = 0
-				if t.owner_id != -1 and t.owner_id != pid:
-					priority = 3  # enemy tile — attack!
-				elif t.owner_id == -1:
-					priority = 2  # unclaimed
-				elif t.owner_id == pid:
-					priority = 1  # own tile (fallback)
-				if priority > best_priority:
-					best_priority = priority
-					best_tile = t
-			if best_tile and best_tile != unit.current_tile:
-				unit.current_tile = best_tile
-				unit.position = tile_map.grid_to_world(best_tile.grid_position)
-				if best_tile.owner_id != pid:
-					territory_manager.claim_tile(best_tile, pid)
+
+			# Accumulate time
+			var elapsed = unit_move_timers.get(unit, 0.0) + delta
+			unit_move_timers[unit] = elapsed
+
+			# Smooth pixel movement toward target tile center
+			var target_pos = tile_map.grid_to_world(unit.current_tile.grid_position)
+			var dist = unit.position.distance_to(target_pos)
+			if dist > 2.0:
+				unit.position = unit.position.move_toward(target_pos, UNIT_SPEED * delta)
+				redraw_needed = true
+
+			# Hop to next tile every UNIT_MOVE_INTERVAL seconds
+			if elapsed >= UNIT_MOVE_INTERVAL:
+				unit_move_timers[unit] = 0.0
+				var neighbors = tile_map.get_neighbors(unit.current_tile)
+				var best_tile: Tile = null
+				var best_priority = -1
+				for t in neighbors:
+					if t == null or t.type == Tile.TileType.WATER:
+						continue
+					var priority = 0
+					if t.owner_id != -1 and t.owner_id != pid:
+						priority = 3  # enemy — attack!
+					elif t.owner_id == -1:
+						priority = 2  # unclaimed
+					else:
+						priority = 1  # own (wander)
+					if priority > best_priority:
+						best_priority = priority
+						best_tile = t
+				if best_tile and best_tile != unit.current_tile:
+					unit.current_tile = best_tile
+					if best_tile.owner_id != pid:
+						territory_manager.claim_tile(best_tile, pid)
+					redraw_needed = true
+
+	if redraw_needed:
+		tile_map.queue_redraw()
 
 func _start_ai_loop() -> void:
 	ai_timer = Timer.new()
@@ -370,8 +398,6 @@ func _on_ai_tick() -> void:
 				best_score = score
 				best_tile = t
 		territory_manager.claim_tile(best_tile, player_id)
-	# Unit movement
-	_move_units()
 	tile_map.queue_redraw()
 	_update_scoreboard()
 
