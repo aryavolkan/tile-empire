@@ -30,7 +30,8 @@ func _ready() -> void:
 	_setup_map()
 	_setup_systems()
 	if not is_training_mode:
-		_setup_players()
+		# Defer _setup_players so tile_map._ready() fires first (populates tiles)
+		call_deferred("_setup_players")
 	
 	if not is_training_mode:
 		_setup_camera()
@@ -111,8 +112,13 @@ func _setup_systems() -> void:
 func _setup_camera() -> void:
 	if camera == null:
 		camera = get_node_or_null("Camera2D")
-	if camera:
-		camera.position = Vector2(640, 360)  # Center of default viewport
+	if camera and tile_map:
+		# Center camera on the middle of the hex map
+		var map_center_x = tile_map.hex_size * sqrt(3.0) * tile_map.map_width / 2.0
+		var map_center_y = tile_map.hex_size * 1.5 * tile_map.map_height / 2.0
+		camera.position = Vector2(map_center_x, map_center_y)
+		# Zoom out to fit most of the map
+		camera.zoom = Vector2(0.35, 0.35)
 
 func _setup_players() -> void:
 	if tile_map == null or territory_manager == null:

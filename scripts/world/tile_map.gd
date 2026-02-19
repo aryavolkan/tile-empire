@@ -180,16 +180,17 @@ func _draw() -> void:
 		draw_polygon(points, PackedColorArray([base_color]))
 		var border = PackedVector2Array(points)
 		border.append(points[0])
-		draw_polyline(border, base_color.darkened(0.2), 1.0, true)
+		draw_polyline(border, base_color.darkened(0.25), 1.0, true)
 		if tile.owner_id != -1:
 			var owner_color = _get_player_color(tile.owner_id)
-			draw_polyline(border, owner_color, 2.0, true)
+			draw_polyline(border, owner_color, 5.0, true)
 
 	for pos in tiles:
 		var tile: Tile = tiles[pos]
 		if tile.settlement_id != -1:
 			var center = grid_to_world(tile.grid_position)
-			draw_circle(center, 6.0, Color.WHITE)
+			draw_circle(center, hex_size * 0.45, Color.WHITE)
+			draw_arc(center, hex_size * 0.45, 0, TAU, 16, Color.BLACK, 2.0)
 
 	var world = get_parent()
 	if world and world.name != "World":
