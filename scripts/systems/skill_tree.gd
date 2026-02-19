@@ -322,3 +322,48 @@ func cancel_research(player_id: int) -> void:
 
 func get_skill_cost(skill_id: String) -> int:
 	return SKILLS.get(skill_id, {}).get("cost", 0)
+
+# === Methods used by AI systems (agent_observer, agent_actions, cpu_opponent) ===
+
+func get_available_technologies(player_id: int) -> Array:
+	var available: Array = []
+	for skill_id in SKILLS:
+		if can_research(player_id, skill_id):
+			available.append({"id": skill_id, "priority": SKILLS[skill_id].cost, "name": SKILLS[skill_id].name})
+	return available
+
+func get_unlocked_count(player_id: int = -1) -> int:
+	# If player_id not given, count all
+	if player_id >= 0:
+		return player_skills.get(player_id, {}).size()
+	var total := 0
+	for pid in player_skills:
+		total += player_skills[pid].size()
+	return total
+
+func get_research_progress() -> float:
+	# Return progress of any active research (0.0 to 1.0)
+	for pid in player_research:
+		var research = player_research[pid]
+		if not research.is_empty():
+			return float(research.get("progress", 0)) / float(research.get("cost", 1))
+	return 0.0
+
+func is_researching() -> bool:
+	for pid in player_research:
+		if not player_research[pid].is_empty():
+			return true
+	return false
+
+func get_available_tech_count() -> int:
+	var count := 0
+	for pid in player_skills:
+		count += get_available_skills(pid).size()
+	return count
+
+func get_victory_progress() -> float:
+	# Percentage of total tech tree unlocked across all players
+	var max_unlocked := 0
+	for pid in player_skills:
+		max_unlocked = max(max_unlocked, player_skills[pid].size())
+	return float(max_unlocked) / float(SKILLS.size()) if SKILLS.size() > 0 else 0.0

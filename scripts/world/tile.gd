@@ -118,6 +118,14 @@ func get_production_yield() -> int:
 		base_yield += 1
 	return base_yield
 
+static func get_distance(from: Vector2i, to: Vector2i) -> int:
+	# Hex distance using axial coordinates (odd-q offset)
+	var ax = from.x
+	var ay = from.y - (from.x - (from.x & 1)) / 2
+	var bx = to.x
+	var by = to.y - (to.x - (to.x & 1)) / 2
+	return int((abs(ax - bx) + abs(ax + ay - bx - by) + abs(ay - by)) / 2)
+
 func get_gold_yield() -> int:
 	var base_yield = resource_yield if resource_type == ResourceType.GOLD else 0
 	if improvement_type == "trade_post":

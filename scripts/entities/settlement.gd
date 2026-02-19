@@ -211,9 +211,19 @@ func can_work_tile(target_tile: Tile) -> bool:
 	return distance <= 2 and target_tile.owner_id == owner_id
 
 func _assign_worker_to_best_tile() -> void:
-	# Find best unworked tile within range
-	# This is simplified - a real implementation would consider tile yields
-	pass
+	# Find best unworked tile within range and assign new population to it
+	if not tile:
+		return
+	var best_tile: Tile = null
+	var best_yield: int = -1
+	for neighbor in tile.neighbors:
+		if neighbor.owner_id == owner_id and neighbor not in working_tiles:
+			var total_yield = neighbor.get_food_yield() + neighbor.get_production_yield() + neighbor.get_gold_yield()
+			if total_yield > best_yield:
+				best_yield = total_yield
+				best_tile = neighbor
+	if best_tile:
+		working_tiles.append(best_tile)
 
 func add_to_production_queue(item_type: String, cost: int) -> void:
 	production_queue.append({
@@ -448,6 +458,11 @@ func get_defensive_building_count() -> int:
 	return count
 
 # Resource properties for direct access
-var production: int = 50:
-	get:
-		return int(production_rate * 10)  # Simplified calculation
+var production: int = 50
+
+func _update_yields() -> void:
+	# Recalculate resource rates based on buildings and worked tiles
+	food_rate = calculate_food_yield()
+	production_rate = calculate_production_yield()
+	gold_rate = calculate_gold_yield()
+	research_rate = calculate_science_yield()

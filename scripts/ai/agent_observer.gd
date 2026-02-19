@@ -128,11 +128,11 @@ func get_territory_size(settlement: Node) -> int:
 
 func get_resources(settlement: Node) -> Dictionary:
 	return {
-		"food": settlement.get("food", 0),
-		"wood": settlement.get("wood", 0),
-		"stone": settlement.get("stone", 0),
-		"gold": settlement.get("gold", 0),
-		"iron": settlement.get("iron", 0)
+		"food": settlement.get("food") if settlement.get("food") != null else 0,
+		"wood": settlement.get("wood") if settlement.get("wood") != null else 0,
+		"stone": settlement.get("stone") if settlement.get("stone") != null else 0,
+		"gold": settlement.get("gold") if settlement.get("gold") != null else 0,
+		"iron": settlement.get("iron") if settlement.get("iron") != null else 0,
 	}
 
 func get_building_count(settlement: Node, building_type: String) -> int:
@@ -142,10 +142,10 @@ func get_building_count(settlement: Node, building_type: String) -> int:
 
 func get_resource_rates(settlement: Node) -> Dictionary:
 	return {
-		"food_rate": settlement.get("food_rate", 0),
-		"production_rate": settlement.get("production_rate", 0),
-		"gold_rate": settlement.get("gold_rate", 0),
-		"research_rate": settlement.get("research_rate", 0)
+		"food_rate": settlement.get("food_rate") if settlement.get("food_rate") != null else 0,
+		"production_rate": settlement.get("production_rate") if settlement.get("production_rate") != null else 0,
+		"gold_rate": settlement.get("gold_rate") if settlement.get("gold_rate") != null else 0,
+		"research_rate": settlement.get("research_rate") if settlement.get("research_rate") != null else 0,
 	}
 
 func get_nearby_tiles(position: Vector2, radius: int) -> Array:

@@ -39,7 +39,7 @@ func _init():
 	for action in Action.values():
 		action_cooldowns[action] = 0
 
-func select_action(nn_outputs: Array[float]) -> Action:
+func select_action(nn_outputs) -> Action:
 	"""
 	Select discrete action from neural network outputs using softmax.
 	Expects NUM_ACTIONS outputs from the neural network.
@@ -168,7 +168,7 @@ func is_action_valid(action: Action) -> bool:
 	
 	return false
 
-func get_best_valid_action(probabilities: Array[float]) -> Action:
+func get_best_valid_action(probabilities) -> Action:
 	"""Find the highest probability valid action"""
 	var best_action = Action.IDLE
 	var best_prob = 0.0
@@ -324,15 +324,19 @@ func get_nearest_enemy_position() -> Vector2:
 	var enemy = game_manager.get_nearest_enemy(player_index)
 	return enemy.position if enemy else Vector2.ZERO
 
-func _softmax(values: Array[float]) -> Array[float]:
+func _softmax(values) -> Array[float]:
 	"""Convert raw values to probabilities using softmax"""
-	var max_val = values.max()
+	var max_val: float = values[0]
+	for i in range(1, values.size()):
+		if values[i] > max_val:
+			max_val = values[i]
+	
 	var exp_values: Array[float] = []
 	var sum_exp = 0.0
 	
 	# Compute exp(x - max) for numerical stability
 	for val in values:
-		var exp_val = exp(val - max_val)
+		var exp_val = exp(float(val) - max_val)
 		exp_values.append(exp_val)
 		sum_exp += exp_val
 	

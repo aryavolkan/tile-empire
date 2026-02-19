@@ -7,9 +7,9 @@ var territory_manager_script = preload("res://scripts/systems/territory_manager.
 var skill_tree_script = preload("res://scripts/systems/skill_tree.gd")
 var progression_script = preload("res://scripts/systems/progression.gd")
 var multiplayer_manager_script = preload("res://scripts/networking/multiplayer_manager.gd")
-var training_manager_script = preload("res://training_manager.gd")
+var training_manager_script = preload("res://scripts/training_manager.gd")
 
-var tile_map: TileMap
+var tile_map: HexTileMap
 var territory_manager: TerritoryManager
 var skill_tree: SkillTree
 var progression_system: ProgressionSystem

@@ -8,7 +8,7 @@ signal territory_lost(player_id: int, lost_tiles: Array[Tile])
 signal border_conflict(player1_id: int, player2_id: int, disputed_tiles: Array[Tile])
 signal expansion_available(player_id: int, available_tiles: Array[Tile])
 
-var tile_map: TileMap
+var tile_map: HexTileMap
 var player_territories: Dictionary = {}  # player_id -> Array[Tile]
 var expansion_costs: Dictionary = {}  # player_id -> int
 var border_tensions: Dictionary = {}  # "player1_player2" -> float
@@ -17,7 +17,7 @@ const BASE_EXPANSION_COST = 10
 const EXPANSION_COST_MULTIPLIER = 1.2
 const BORDER_TENSION_THRESHOLD = 5.0
 
-func initialize(map: TileMap) -> void:
+func initialize(map: HexTileMap) -> void:
 	tile_map = map
 	tile_map.territory_changed.connect(_on_territory_changed)
 
@@ -166,6 +166,31 @@ func _on_territory_changed(player_id: int, changed_tiles: Array[Tile]) -> void:
 func get_border_tension(player1_id: int, player2_id: int) -> float:
 	var tension_key = _get_tension_key(player1_id, player2_id)
 	return border_tensions.get(tension_key, 0.0)
+
+func register_settlement(settlement: Node, player_id: int) -> void:
+	# Register a settlement's starting tile
+	if not player_territories.has(player_id):
+		player_territories[player_id] = []
+		expansion_costs[player_id] = BASE_EXPANSION_COST
+
+func get_adjacent_unowned_tiles(world_position: Vector2, player_id: int) -> Array:
+	# Get unowned tiles adjacent to player's territory (used by AI)
+	return get_expandable_tiles(player_id)
+
+func claim_tile(tile: Tile, player_id: int) -> bool:
+	# Alias for expand_territory used by AI
+	return expand_territory(player_id, tile)
+
+func get_threatened_border_tiles(player_id: int) -> Array:
+	# Find border tiles where enemy tension is high
+	var threatened: Array = []
+	var territory = player_territories.get(player_id, [])
+	for tile in territory:
+		for neighbor in tile.neighbors:
+			if neighbor.is_owned() and neighbor.owner_id != player_id:
+				threatened.append(tile)
+				break
+	return threatened
 
 func reduce_border_tension(player1_id: int, player2_id: int, amount: float) -> void:
 	var tension_key = _get_tension_key(player1_id, player2_id)

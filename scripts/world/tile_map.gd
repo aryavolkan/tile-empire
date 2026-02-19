@@ -1,4 +1,4 @@
-class_name TileMap
+class_name HexTileMap
 extends Node2D
 
 ## Manages the hex-based tile grid
@@ -22,29 +22,64 @@ var hex_height: float
 var hex_horiz_spacing: float
 var hex_vert_spacing: float
 
-# Hex direction vectors for flat-top hexagons
-const HEX_DIRECTIONS = [
-	Vector2i(1, 0),   # East
-	Vector2i(1, -1),  # Northeast
-	Vector2i(0, -1),  # Northwest
-	Vector2i(-1, 0),  # West
-	Vector2i(-1, 1),  # Southwest
-	Vector2i(0, 1),   # Southeast
+# Noise for terrain generation (cached, not recreated per tile)
+var _terrain_noise: FastNoiseLite
+var _map_seed: int = 42
+var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+
+# Hex neighbor offsets for offset coordinates (flat-top, odd-q offset)
+# Even columns and odd columns have different neighbor offsets
+const HEX_NEIGHBORS_EVEN_COL = [
+	Vector2i(1, -1),  # NE
+	Vector2i(1, 0),   # SE
+	Vector2i(0, 1),   # S
+	Vector2i(-1, 0),  # SW
+	Vector2i(-1, -1), # NW
+	Vector2i(0, -1),  # N
+]
+const HEX_NEIGHBORS_ODD_COL = [
+	Vector2i(1, 0),   # NE
+	Vector2i(1, 1),   # SE
+	Vector2i(0, 1),   # S
+	Vector2i(-1, 1),  # SW
+	Vector2i(-1, 0),  # NW
+	Vector2i(0, -1),  # N
 ]
 
 func _ready() -> void:
-	# Calculate hex dimensions
-	hex_width = hex_size * 2
-	hex_height = sqrt(3) * hex_size
-	hex_horiz_spacing = hex_width * 3 / 4
-	hex_vert_spacing = hex_height
+	_init_hex_dimensions()
 	
 	territory_overlay = Node2D.new()
 	add_child(territory_overlay)
 	
 	_generate_map()
 
+func _init_hex_dimensions() -> void:
+	# Calculate hex dimensions for flat-top hexagons
+	hex_width = hex_size * 2
+	hex_height = sqrt(3) * hex_size
+	hex_horiz_spacing = hex_width * 3.0 / 4.0
+	hex_vert_spacing = hex_height
+
+func set_seed(seed_value: int) -> void:
+	_map_seed = seed_value
+	_rng.seed = seed_value
+
+func generate() -> void:
+	# Clear existing map and regenerate
+	tiles.clear()
+	for key in tile_nodes:
+		tile_nodes[key].queue_free()
+	tile_nodes.clear()
+	_generate_map()
+
 func _generate_map() -> void:
+	# Set up noise
+	_terrain_noise = FastNoiseLite.new()
+	_terrain_noise.seed = _map_seed
+	_terrain_noise.frequency = 0.05
+	_rng.seed = _map_seed
+	
 	# Generate tiles with basic terrain
 	for y in range(map_height):
 		for x in range(map_width):
@@ -71,12 +106,7 @@ func _generate_map() -> void:
 		tile.neighbors = get_neighbors(tile)
 
 func _get_terrain_type(x: int, y: int) -> Tile.TileType:
-	# Simple terrain generation using noise
-	var noise = FastNoiseLite.new()
-	noise.seed = 42
-	noise.frequency = 0.05
-	
-	var height = noise.get_noise_2d(x * 10.0, y * 10.0)
+	var height = _terrain_noise.get_noise_2d(x * 10.0, y * 10.0)
 	
 	if height < -0.3:
 		return Tile.TileType.WATER
@@ -87,7 +117,7 @@ func _get_terrain_type(x: int, y: int) -> Tile.TileType:
 	elif height < 0.4:
 		return Tile.TileType.MOUNTAIN
 	else:
-		return Tile.TileType.DESERT if randf() > 0.5 else Tile.TileType.TUNDRA
+		return Tile.TileType.DESERT if _rng.randf() > 0.5 else Tile.TileType.TUNDRA
 
 func grid_to_world(grid_pos: Vector2i) -> Vector2:
 	# Convert hex grid coordinates to world position (flat-top)
@@ -118,13 +148,15 @@ func hex_round(hex: Vector2) -> Vector2:
 	return Vector2(rx, ry)
 
 func offset_to_axial(offset: Vector2i) -> Vector2:
+	# Odd-q offset to axial (flat-top)
 	var q = offset.x
 	var r = offset.y - (offset.x - (offset.x & 1)) / 2
 	return Vector2(q, r)
 
 func axial_to_offset(axial: Vector2) -> Vector2i:
-	var col = int(axial.x)
-	var row = int(axial.y + (axial.x - (int(axial.x) & 1)) / 2)
+	# Axial to odd-q offset (flat-top)
+	var col = int(round(axial.x))
+	var row = int(round(axial.y)) + (col - (col & 1)) / 2
 	return Vector2i(col, row)
 
 func get_tile(grid_pos: Vector2i) -> Tile:
@@ -132,19 +164,24 @@ func get_tile(grid_pos: Vector2i) -> Tile:
 
 func get_neighbors(tile: Tile) -> Array[Tile]:
 	var neighbors: Array[Tile] = []
-	for dir in HEX_DIRECTIONS:
+	var directions: Array
+	if tile.grid_position.x & 1 == 0:
+		directions = HEX_NEIGHBORS_EVEN_COL
+	else:
+		directions = HEX_NEIGHBORS_ODD_COL
+	for dir in directions:
 		var neighbor_pos = tile.grid_position + dir
 		var neighbor = get_tile(neighbor_pos)
 		if neighbor:
 			neighbors.append(neighbor)
 	return neighbors
 
-func get_tiles_in_range(center: Vector2i, range: int) -> Array[Tile]:
+func get_tiles_in_range(center: Vector2i, hex_range: int) -> Array[Tile]:
 	var result: Array[Tile] = []
 	var center_axial = offset_to_axial(center)
 	
-	for q in range(-range, range + 1):
-		for r in range(max(-range, -q - range), min(range, -q + range) + 1):
+	for q in range(-hex_range, hex_range + 1):
+		for r in range(max(-hex_range, -q - hex_range), min(hex_range, -q + hex_range) + 1):
 			var axial = center_axial + Vector2(q, r)
 			var offset = axial_to_offset(axial)
 			var tile = get_tile(offset)
@@ -152,6 +189,23 @@ func get_tiles_in_range(center: Vector2i, range: int) -> Array[Tile]:
 				result.append(tile)
 	
 	return result
+
+func get_tiles_in_radius(center: Vector2, radius: int) -> Array:
+	# Convert world position to grid, then get tiles in range
+	var grid_pos = world_to_grid(center)
+	return get_tiles_in_range(grid_pos, radius)
+
+func get_total_tiles() -> int:
+	return tiles.size()
+
+func get_valid_spawn_positions() -> Array:
+	# Return positions suitable for settlement placement (not water/mountain, not owned)
+	var valid: Array = []
+	for pos in tiles:
+		var tile = tiles[pos]
+		if tile.can_build_settlement() and not tile.is_owned():
+			valid.append(tile.world_position)
+	return valid
 
 func get_distance(from: Vector2i, to: Vector2i) -> int:
 	var a = offset_to_axial(from)
@@ -186,8 +240,8 @@ func _update_territory_visual(tile: Tile) -> void:
 		# This would typically update the tile's color or border
 		# based on the owner's player color
 
-func reveal_tiles_around(center: Vector2i, range: int, player_id: int) -> void:
-	var tiles_to_reveal = get_tiles_in_range(center, range)
+func reveal_tiles_around(center: Vector2i, hex_range: int, player_id: int) -> void:
+	var tiles_to_reveal = get_tiles_in_range(center, hex_range)
 	for tile in tiles_to_reveal:
 		tile.discover(player_id)
 

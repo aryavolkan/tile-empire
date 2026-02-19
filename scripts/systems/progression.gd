@@ -263,6 +263,9 @@ func get_player_score(player_id: int) -> int:
 func get_victory_progress(player_id: int) -> Dictionary:
 	return victory_progress.get(player_id, {})
 
+func get_culture_score(player_id: int) -> float:
+	return float(victory_progress.get(player_id, {}).get("cultural", 0.0)) * float(VICTORY_CONDITIONS[VictoryType.CULTURAL].culture_points)
+
 func get_leaderboard() -> Array:
 	var leaderboard = []
 	for player_id in player_scores:

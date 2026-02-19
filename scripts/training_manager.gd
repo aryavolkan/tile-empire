@@ -5,6 +5,8 @@ extends Node
 
 class_name TrainingManager
 
+const NeuralNetwork = preload("res://scripts/ai/neural_network.gd")
+
 # Command line arguments
 var genome_path: String = ""
 var metrics_path: String = ""
