@@ -368,8 +368,7 @@ func _process_units(delta: float) -> void:
 						best_tile = t
 				if best_tile and best_tile != unit.current_tile:
 					unit.current_tile = best_tile
-					if best_tile.owner_id != pid:
-						territory_manager.claim_tile(best_tile, pid)
+					territory_manager.conquer_tile(best_tile, pid)
 					redraw_needed = true
 
 	if redraw_needed:
