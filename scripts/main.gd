@@ -465,6 +465,16 @@ func _pick_next_tile(unit: Node, pid: int, is_tank: bool) -> Tile:
 			best_score = base_score
 			best_tile = t
 
+	# Fallback: if no valid tile found (all neighbors water or have enemies),
+	# pick a random non-water neighbor even with enemies to avoid getting stuck.
+	if best_tile == null:
+		var fallback: Array[Tile] = []
+		for t in neighbors:
+			if t != null and t.type != Tile.TileType.WATER:
+				fallback.append(t)
+		if not fallback.is_empty():
+			best_tile = fallback[randi() % fallback.size()]
+
 	return best_tile
 
 func _tank_shoot(tank: Node, pid: int) -> bool:
