@@ -283,7 +283,7 @@ func find_path(from: Vector2i, to: Vector2i, unit_type: String = "") -> Array[Ve
 				blocked.append(pos)
 			elif mc != 1.0:
 				costs[pos] = float(mc)
-		var max_dist := max(map_width, map_height) * 2
+		var max_dist: int = max(map_width, map_height) * 2
 		var result = hm.find_path(from, to, blocked, costs, max_dist)
 		# Convert to typed array
 		var typed: Array[Vector2i] = []
