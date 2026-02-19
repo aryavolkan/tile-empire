@@ -383,49 +383,65 @@ func _spawn_starting_units() -> void:
 		_do_spawn_unit(units_container, spawn_tile, pid, 1)  # WARRIOR
 		_do_spawn_unit(units_container, spawn_tile, pid, 6)  # TANK
 
+## Returns the min pixel distance from world_pos to any friendly unit (excluding self)
+func _min_friendly_dist(world_pos: Vector2, pid: int, exclude_unit: Node) -> float:
+	var min_d = INF
+	for u in player_units.get(pid, []):
+		if u == exclude_unit or not is_instance_valid(u):
+			continue
+		min_d = min(min_d, world_pos.distance_to(u.position))
+	return min_d
+
 func _pick_next_tile(unit: Node, pid: int, is_tank: bool) -> Tile:
 	var neighbors = tile_map.get_neighbors(unit.current_tile)
 	var best_tile: Tile = null
-	var best_priority = -1
-	if is_tank:
-		for t in neighbors:
-			if t == null or t.type == Tile.TileType.WATER:
-				continue
-			if _tile_has_enemy_unit(t, pid):
-				continue
-			var priority = 0
+	var best_score = -INF
+
+	for t in neighbors:
+		if t == null or t.type == Tile.TileType.WATER:
+			continue
+		if _tile_has_enemy_unit(t, pid):
+			continue
+
+		var t_world = tile_map.grid_to_world(t.grid_position)
+		var base_score = 0.0
+
+		if is_tank:
+			# Tank: defend own border tiles
 			var near_enemy = false
 			for nb in tile_map.get_neighbors(t):
 				if nb.owner_id != pid and nb.owner_id != -1:
 					near_enemy = true
 					break
 			if t.owner_id == pid and near_enemy:
-				priority = 4
+				base_score = 40.0
 			elif t.owner_id != pid and t.owner_id != -1:
-				priority = 3
+				base_score = 30.0
 			elif t.owner_id == -1:
-				priority = 2
+				base_score = 20.0
 			else:
-				priority = 1
-			if priority > best_priority:
-				best_priority = priority
-				best_tile = t
-	else:
-		for t in neighbors:
-			if t == null or t.type == Tile.TileType.WATER:
-				continue
-			if _tile_has_enemy_unit(t, pid):
-				continue
-			var priority = 0
-			if t.owner_id != -1 and t.owner_id != pid:
-				priority = 3
-			elif t.owner_id == -1:
-				priority = 2
+				base_score = 5.0
+			# Tanks also spread out among themselves
+			var fdist = _min_friendly_dist(t_world, pid, unit)
+			if fdist < INF:
+				base_score += clamp(fdist / 100.0, 0.0, 10.0)
+		else:
+			# Warrior: aggressive expansion — strongly favour unclaimed/enemy
+			if t.owner_id != pid:
+				base_score = 30.0 if t.owner_id == -1 else 25.0
 			else:
-				priority = 1
-			if priority > best_priority:
-				best_priority = priority
-				best_tile = t
+				base_score = 2.0
+
+			# KEY: warriors spread out — heavily penalise tiles close to friendly units
+			var fdist = _min_friendly_dist(t_world, pid, unit)
+			if fdist < INF:
+				# Strong repulsion below 200px, bonus for being far away
+				base_score += clamp((fdist - 120.0) / 60.0, -15.0, 20.0)
+
+		if base_score > best_score:
+			best_score = base_score
+			best_tile = t
+
 	return best_tile
 
 func _process_units(delta: float) -> void:
