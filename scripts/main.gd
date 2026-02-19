@@ -174,6 +174,11 @@ const TANK_SPEED = 45.0      # tanks move at half warrior speed
 
 var unit_target_tile: Dictionary = {}  # unit -> Tile (next destination)
 var recently_lost: Array[Tile] = []    # tiles recently stolen from us — tanks reclaim
+var recently_lost_time: Dictionary = {} # tile -> timestamp (msec) when added
+var recently_lost_tick: Dictionary = {} # tile -> AI tick count when added
+var ai_tick_count: int = 0
+const RECENTLY_LOST_MAX_AGE_MS = 30000  # 30 seconds
+const RECENTLY_LOST_MAX_TICKS = 20      # 20 AI ticks
 const TANK_SHOOT_RANGE = 180.0        # px — tanks kill enemy warriors in this radius
 var tank_has_fired: Dictionary = {}    # tank -> true once it uses its single shot
 var shoot_flashes: Array = []          # [{from, to, ttl}] for visual feedback
@@ -578,9 +583,24 @@ func _start_ai_loop() -> void:
 	ai_timer.timeout.connect(_on_ai_tick)
 	add_child(ai_timer)
 
+func _purge_stale_recently_lost() -> void:
+	var now_ms = Time.get_ticks_msec()
+	var i = recently_lost.size() - 1
+	while i >= 0:
+		var tile = recently_lost[i]
+		var age_ms = now_ms - recently_lost_time.get(tile, 0)
+		var age_ticks = ai_tick_count - recently_lost_tick.get(tile, 0)
+		if age_ms >= RECENTLY_LOST_MAX_AGE_MS or age_ticks >= RECENTLY_LOST_MAX_TICKS:
+			recently_lost.remove_at(i)
+			recently_lost_time.erase(tile)
+			recently_lost_tick.erase(tile)
+		i -= 1
+
 func _on_ai_tick() -> void:
 	if territory_manager == null or tile_map == null:
 		return
+	ai_tick_count += 1
+	_purge_stale_recently_lost()
 	# Territory expansion (AI only — skip human player 0)
 	for player_id in player_ids_active:
 		if player_id == HUMAN_PLAYER_ID:
@@ -692,10 +712,17 @@ func _on_tile_conquered(conqueror_id: int, prev_owner: int, tile: Tile) -> void:
 		# Enemy stole our tile — mark for recapture
 		if tile not in recently_lost:
 			recently_lost.append(tile)
+			recently_lost_time[tile] = Time.get_ticks_msec()
+			recently_lost_tick[tile] = ai_tick_count
 			if recently_lost.size() > 20:
-				recently_lost.pop_front()
-	elif conqueror_id == HUMAN_PLAYER_ID and tile in recently_lost:
+				var removed = recently_lost.pop_front()
+				recently_lost_time.erase(removed)
+				recently_lost_tick.erase(removed)
+	elif tile in recently_lost:
+		# Any player conquering the tile clears it from recapture list
 		recently_lost.erase(tile)
+		recently_lost_time.erase(tile)
+		recently_lost_tick.erase(tile)
 
 func _on_skill_unlocked(skill_id: String, player_id: int) -> void:
 	print("Player ", player_id, " unlocked skill: ", skill_id)
