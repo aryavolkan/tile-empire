@@ -163,6 +163,22 @@ func _setup_players() -> void:
 		tile_map.queue_redraw()
 	_start_ai_loop()
 
+func _process(delta: float) -> void:
+	if camera == null:
+		return
+	var pan_speed = 400.0 / camera.zoom.x
+	var move = Vector2.ZERO
+	if Input.is_key_pressed(KEY_LEFT) or Input.is_key_pressed(KEY_A):
+		move.x -= 1
+	if Input.is_key_pressed(KEY_RIGHT) or Input.is_key_pressed(KEY_D):
+		move.x += 1
+	if Input.is_key_pressed(KEY_UP) or Input.is_key_pressed(KEY_W):
+		move.y -= 1
+	if Input.is_key_pressed(KEY_DOWN) or Input.is_key_pressed(KEY_S):
+		move.y += 1
+	if move != Vector2.ZERO:
+		camera.position += move.normalized() * pan_speed * delta
+
 func _input(event: InputEvent) -> void:
 	if camera == null:
 		return
