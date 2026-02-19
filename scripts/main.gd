@@ -172,21 +172,37 @@ const TANK_SPEED = 45.0      # tanks move at half warrior speed
 
 var unit_target_tile: Dictionary = {}  # unit -> Tile (next destination)
 
+# Human player resources
+var res_food: float = 20.0
+var res_production: float = 20.0
+var res_gold: float = 20.0
+const WARRIOR_COST = {"food": 10, "production": 8}
+const TANK_COST    = {"food": 5,  "production": 25}
+const RESOURCE_TICK = 2.0  # seconds between resource collection
+var resource_timer: float = 0.0
+var resource_label: RichTextLabel
+
 func _process(delta: float) -> void:
 	# Camera pan
 	if camera:
 		var pan_speed = 400.0 / camera.zoom.x
 		var move = Vector2.ZERO
-		if Input.is_key_pressed(KEY_LEFT) or Input.is_key_pressed(KEY_A):
+		if Input.is_key_pressed(KEY_LEFT):
 			move.x -= 1
-		if Input.is_key_pressed(KEY_RIGHT) or Input.is_key_pressed(KEY_D):
+		if Input.is_key_pressed(KEY_RIGHT):
 			move.x += 1
-		if Input.is_key_pressed(KEY_UP) or Input.is_key_pressed(KEY_W):
+		if Input.is_key_pressed(KEY_UP):
 			move.y -= 1
-		if Input.is_key_pressed(KEY_DOWN) or Input.is_key_pressed(KEY_S):
+		if Input.is_key_pressed(KEY_DOWN):
 			move.y += 1
 		if move != Vector2.ZERO:
 			camera.position += move.normalized() * pan_speed * delta
+
+	# Resource collection
+	resource_timer += delta
+	if resource_timer >= RESOURCE_TICK:
+		resource_timer = 0.0
+		_collect_resources()
 
 	# Real-time unit logic
 	if tile_map and territory_manager:
@@ -225,6 +241,10 @@ func _input(event: InputEvent) -> void:
 		elif event.keycode == KEY_MINUS:
 			camera.zoom *= 0.83
 			camera.zoom = camera.zoom.clamp(Vector2(0.1, 0.1), Vector2(4.0, 4.0))
+		elif event.keycode == KEY_W:
+			_try_spawn_human_unit(1)   # W = Warrior
+		elif event.keycode == KEY_T:
+			_try_spawn_human_unit(6)   # T = Tank
 
 func _setup_scoreboard() -> void:
 	var hud = CanvasLayer.new()
@@ -247,9 +267,32 @@ func _setup_scoreboard() -> void:
 	scoreboard.add_theme_font_size_override("normal_font_size", 14)
 	hud.add_child(scoreboard)
 
+	# Resource panel (top-right)
+	var res_bg = ColorRect.new()
+	res_bg.position = Vector2(0, 8)
+	res_bg.size = Vector2(220, 130)
+	res_bg.color = Color(0, 0, 0, 0.72)
+	res_bg.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	res_bg.offset_right = -8
+	res_bg.offset_left = -228
+	hud.add_child(res_bg)
+
+	resource_label = RichTextLabel.new()
+	resource_label.bbcode_enabled = true
+	resource_label.size = Vector2(210, 122)
+	resource_label.scroll_active = false
+	resource_label.add_theme_color_override("default_color", Color.WHITE)
+	resource_label.add_theme_font_size_override("normal_font_size", 14)
+	resource_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	resource_label.offset_right = -13
+	resource_label.offset_left = -223
+	resource_label.offset_top = 13
+	hud.add_child(resource_label)
+	_update_resource_label()
+
 	# Controls hint
 	var hint = Label.new()
-	hint.text = "You = 🟡 Yellow  |  Click = Spawn Tank  |  +/- Zoom  |  WASD Pan"
+	hint.text = "You = 🟡 Yellow  |  [W] Warrior  [T] Tank  |  +/- Zoom  |  Arrow/WASD Pan"
 	hint.position = Vector2(8, 0)
 	hint.size = Vector2(800, 28)
 	hint.add_theme_color_override("font_color", Color(1, 1, 0.6))
@@ -451,6 +494,48 @@ func _on_ai_tick() -> void:
 	tile_map.queue_redraw()
 	_update_scoreboard()
 
+func _collect_resources() -> void:
+	if tile_map == null:
+		return
+	var owned = territory_manager.player_territories.get(HUMAN_PLAYER_ID, [])
+	for tile in owned:
+		res_food       += tile.get_food_yield()       * 0.5
+		res_production += tile.get_production_yield() * 0.5
+		res_gold       += tile.get_gold_yield()       * 0.5
+	res_food       = min(res_food,       999)
+	res_production = min(res_production, 999)
+	res_gold       = min(res_gold,       999)
+	_update_resource_label()
+
+func _update_resource_label() -> void:
+	if resource_label == null:
+		return
+	resource_label.text = (
+		"[b][color=#f2e619]■ YOU[/color][/b]\n" +
+		"🌾 Food:  [b]%d[/b]\n" % int(res_food) +
+		"⚙ Prod:  [b]%d[/b]\n" % int(res_production) +
+		"💰 Gold:  [b]%d[/b]\n\n" % int(res_gold) +
+		"[color=#aaffaa][W][/color] Warrior  🌾%d ⚙%d\n" % [WARRIOR_COST.food, WARRIOR_COST.production] +
+		"[color=#aaffaa][T][/color] Tank     🌾%d ⚙%d" % [TANK_COST.food, TANK_COST.production]
+	)
+
+func _try_spawn_human_unit(unit_type: int) -> void:
+	var cost = TANK_COST if unit_type == 6 else WARRIOR_COST
+	if res_food < cost.food or res_production < cost.production:
+		print("Not enough resources! Need 🌾%d ⚙%d" % [cost.food, cost.production])
+		return
+	var spawn_tile = player_start_tiles.get(HUMAN_PLAYER_ID)
+	if spawn_tile == null:
+		# Fall back to any owned tile
+		var owned = territory_manager.player_territories.get(HUMAN_PLAYER_ID, [])
+		if owned.is_empty():
+			return
+		spawn_tile = owned[0]
+	res_food       -= cost.food
+	res_production -= cost.production
+	_spawn_unit(spawn_tile, HUMAN_PLAYER_ID, unit_type)
+	_update_resource_label()
+
 func _tile_has_enemy_unit(tile: Tile, for_player: int) -> bool:
 	for pid in player_units:
 		if pid == for_player:
@@ -479,11 +564,8 @@ func _spawn_unit(tile: Tile, player_id: int, unit_type: int) -> void:
 	tile_map.queue_redraw()
 	_update_scoreboard()
 
-func _on_tile_clicked(tile: Tile) -> void:
-	# Human player spawns a Tank on click
-	if tile.type == Tile.TileType.WATER:
-		return
-	_spawn_unit(tile, HUMAN_PLAYER_ID, 6)  # 6 = TANK
+func _on_tile_clicked(_tile: Tile) -> void:
+	pass  # click no longer spawns units
 
 func _on_territory_expanded(player_id: int, new_tiles: Array) -> void:
 	print("Player ", player_id, " expanded territory by ", new_tiles.size(), " tiles")
