@@ -225,14 +225,14 @@ func _setup_scoreboard() -> void:
 	# Background
 	var bg = ColorRect.new()
 	bg.position = Vector2(8, 8)
-	bg.size = Vector2(260, 420)
+	bg.size = Vector2(260, 700)
 	bg.color = Color(0, 0, 0, 0.72)
 	hud.add_child(bg)
 
 	scoreboard = RichTextLabel.new()
 	scoreboard.bbcode_enabled = true
 	scoreboard.position = Vector2(12, 12)
-	scoreboard.size = Vector2(248, 406)
+	scoreboard.size = Vector2(248, 686)
 	scoreboard.scroll_active = false
 	scoreboard.add_theme_color_override("default_color", Color.WHITE)
 	scoreboard.add_theme_font_size_override("normal_font_size", 14)
@@ -258,6 +258,18 @@ const TILE_INFO = {
 func _update_scoreboard() -> void:
 	if scoreboard == null or tile_map == null:
 		return
+	# Dynamically resize background to fit content
+	var line_height = 18
+	var lines = 2  # header + spacing
+	for pid in player_ids_active:
+		lines += 8  # player header + up to 6 terrain types + blank line
+	var needed_h = lines * line_height + 20
+	var bg = scoreboard.get_parent()  # CanvasLayer
+	# find the ColorRect sibling
+	for child in bg.get_children():
+		if child is ColorRect:
+			child.size.y = needed_h
+	scoreboard.size.y = needed_h - 14
 	var player_tiles: Dictionary = {}
 	for pid in player_ids_active:
 		player_tiles[pid] = {}
