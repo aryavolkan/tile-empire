@@ -138,7 +138,15 @@ func _calculate_progression_score(agent_data: Dictionary) -> float:
 		score += growth_score * 0.05
 		max_possible += 0.05
 	
-	return clampf(score / max_possible, 0.0, 1.0)
+	var raw_score = clampf(score / max_possible, 0.0, 1.0)
+	
+	# Penalize high invalid action rates (encourages learning valid action masking)
+	var invalid_rate = agent_data.get("invalid_action_rate", 0.0)
+	if invalid_rate > 0.0:
+		# Reduce score by up to 20% for agents that constantly pick invalid actions
+		raw_score *= (1.0 - clampf(invalid_rate, 0.0, 1.0) * 0.2)
+	
+	return raw_score
 
 func _calculate_survival_score(ticks_survived: int, max_ticks: int) -> float:
 	"""

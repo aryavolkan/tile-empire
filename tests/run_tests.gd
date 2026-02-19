@@ -24,6 +24,10 @@ func _init():
 	_run_cpu_opponent_tests()
 	_run_multiplayer_manager_tests()
 	_run_training_pipeline_tests()
+	_run_unit_tests()
+	_run_progression_tests()
+	_run_ai_observation_tests()
+	_run_ai_action_space_tests()
 	
 	print("\n============================================")
 	print("Results: %d passed, %d failed, %d total" % [_tests_passed, _tests_failed, _tests_total])
@@ -566,6 +570,302 @@ func _run_training_pipeline_tests() -> void:
 	_assert(!act.is_action_valid(AgentActions.Action.IDLE), "action invalid during cooldown")
 	act.update_cooldowns(5.0)
 	_assert(act.is_action_valid(AgentActions.Action.IDLE), "action valid after cooldown expires")
+
+# ==================== Unit Tests ====================
+
+func _run_unit_tests() -> void:
+	_suite("Unit")
+	
+	# Test initialization
+	var unit = Unit.new()
+	var tile = Tile.new(Vector2i(0, 0), Tile.TileType.GRASSLAND)
+	tile.world_position = Vector2(100, 100)
+	unit.initialize(tile, 1, Unit.UnitType.WARRIOR)
+	
+	_assert_eq(unit.owner_id, 1, "owner set correctly")
+	_assert_eq(int(unit.unit_type), int(Unit.UnitType.WARRIOR), "type set correctly")
+	_assert_eq(unit.attack_strength, 10, "warrior attack is 10")
+	_assert_eq(unit.defense_strength, 8, "warrior defense is 8")
+	_assert(!unit.is_civilian, "warrior is not civilian")
+	_assert(unit.can_attack, "warrior can attack")
+	
+	# Test scout initialization
+	var scout = Unit.new()
+	scout.initialize(tile, 1, Unit.UnitType.SCOUT)
+	_assert_eq(int(scout.max_movement_points), 3, "scout has 3 movement")
+	_assert_eq(scout.sight_range, 3, "scout has 3 sight")
+	
+	# Test settler initialization
+	var settler = Unit.new()
+	settler.initialize(tile, 1, Unit.UnitType.SETTLER)
+	_assert(settler.is_civilian, "settler is civilian")
+	_assert(!settler.can_attack, "settler can't attack")
+	
+	# Test damage and healing
+	unit.take_damage(30)
+	_assert_eq(unit.health, 70, "health reduced by damage")
+	unit.heal(10)
+	_assert_eq(unit.health, 80, "health restored by heal")
+	unit.heal(999)
+	_assert_eq(unit.health, 100, "heal capped at max_health")
+	
+	# Test experience and leveling
+	_assert_eq(unit.level, 1, "starts at level 1")
+	unit.gain_experience(20)  # level 1 needs 20 exp
+	_assert_eq(unit.level, 2, "leveled up to 2")
+	_assert_eq(unit.max_health, 110, "max health increased on level up")
+	_assert_eq(unit.attack_strength, 12, "attack increased on level up")
+	
+	# Test fortify/wake
+	var base_defense = unit.defense_strength
+	unit.fortify()
+	_assert_eq(int(unit.state), int(Unit.UnitState.FORTIFIED), "state is fortified")
+	_assert(unit.defense_strength > base_defense, "defense increased when fortified")
+	unit.wake()
+	_assert_eq(int(unit.state), int(Unit.UnitState.IDLE), "state reset to idle")
+	
+	# Test end_turn restores movement
+	unit.movement_points = 0
+	unit.end_turn()
+	_assert_eq(int(unit.movement_points), int(unit.max_movement_points), "movement restored on end_turn")
+	
+	# Test fortify heal on end_turn
+	unit.take_damage(50)
+	unit.fortify()
+	var hp_before = unit.health
+	unit.end_turn()
+	_assert(unit.health > hp_before, "heals while fortified on end_turn")
+	
+	# Test _is_tile_hostile
+	var enemy_tile = Tile.new(Vector2i(1, 0), Tile.TileType.GRASSLAND)
+	enemy_tile.owner_id = 2
+	_assert(unit._is_tile_hostile(enemy_tile), "enemy-owned tile is hostile")
+	
+	var neutral_tile = Tile.new(Vector2i(2, 0), Tile.TileType.GRASSLAND)
+	neutral_tile.owner_id = -1
+	_assert(!unit._is_tile_hostile(neutral_tile), "neutral tile is not hostile")
+	
+	var own_tile = Tile.new(Vector2i(3, 0), Tile.TileType.GRASSLAND)
+	own_tile.owner_id = 1
+	_assert(!unit._is_tile_hostile(own_tile), "own tile is not hostile")
+	
+	# Test counter_attack
+	var attacker = Unit.new()
+	attacker.initialize(tile, 2, Unit.UnitType.WARRIOR)
+	var attacker_hp = attacker.health
+	unit.wake()
+	unit.counter_attack(attacker)
+	_assert(attacker.health < attacker_hp, "counter_attack deals damage")
+	
+	# Test get_combat_strength
+	var strength = unit.get_combat_strength()
+	_assert(strength > 0.0, "combat strength is positive")
+	
+	# Test embark at coast
+	var water_tile = Tile.new(Vector2i(0, 1), Tile.TileType.WATER)
+	tile.neighbors = [water_tile]
+	var embarked = unit.embark()
+	_assert(embarked, "can embark at coast")
+	_assert_eq(int(unit.state), int(Unit.UnitState.EMBARKED), "state is embarked")
+	
+	# Test can't embark when already embarked
+	_assert(!unit.embark(), "can't embark when already embarked")
+	
+	# Test disembark on land
+	unit.current_tile = tile  # back on land
+	_assert(unit.disembark(), "can disembark on land")
+	_assert_eq(int(unit.state), int(Unit.UnitState.IDLE), "state back to idle after disembark")
+
+# ==================== Progression Tests ====================
+
+func _run_progression_tests() -> void:
+	_suite("Progression")
+	
+	var prog = ProgressionSystem.new()
+	# Need skill tree for initialization
+	var st = SkillTree.new()
+	
+	# Initialize player
+	prog.skill_tree = st
+	prog.initialize_player(0)
+	
+	_assert_eq(int(prog.get_player_stage(0)), int(ProgressionSystem.EmpireStage.TRIBAL), "starts tribal")
+	_assert_eq(prog.get_player_score(0), 0, "starts with 0 score")
+	
+	# Test stage advancement
+	var stats_expanding = {
+		"settlements": 3, "territory": 15, "population": 15,
+		"technologies": 0, "culture_points": 0, "total_map_tiles": 100,
+		"military_strength": 0, "total_players": 2, "alliances": 0,
+		"active_players": 2
+	}
+	prog.update_player_stats(0, stats_expanding)
+	_assert_eq(int(prog.get_player_stage(0)), int(ProgressionSystem.EmpireStage.EXPANDING), "advanced to expanding")
+	
+	# Test score calculation
+	_assert(prog.get_player_score(0) > 0, "score is positive after update")
+	
+	# Test victory progress
+	var vp = prog.get_victory_progress(0)
+	_assert(vp.has("domination"), "victory progress has domination")
+	_assert(vp.domination >= 0.0, "domination progress >= 0")
+	
+	# Test leaderboard
+	prog.initialize_player(1)
+	prog.update_player_stats(1, {"territory": 5, "population": 3, "total_map_tiles": 100,
+		"technologies": 0, "culture_points": 0, "settlements": 1, "military_strength": 0,
+		"total_players": 2, "alliances": 0, "active_players": 2})
+	var lb = prog.get_leaderboard()
+	_assert_eq(lb.size(), 2, "leaderboard has 2 players")
+	_assert(lb[0].score >= lb[1].score, "leaderboard sorted descending")
+	
+	# Test trigger_event for milestones
+	prog.trigger_event(0, "territory_expanded")
+	_assert("first_expansion" in prog.player_milestones[0], "first_expansion milestone triggered")
+	
+	# Test milestone idempotency
+	var milestone_count = prog.player_milestones[0].size()
+	prog.trigger_event(0, "territory_expanded")
+	_assert_eq(prog.player_milestones[0].size(), milestone_count, "milestone not duplicated")
+
+# ==================== AI Observation Tests ====================
+
+func _run_ai_observation_tests() -> void:
+	_suite("AI Observation")
+	
+	var obs = AgentObserver.new()
+	obs.player_index = 0
+	
+	# Create a mock settlement
+	var settlement = Settlement.new()
+	settlement.food = 150
+	settlement.wood = 80
+	settlement.stone = 60
+	settlement.gold = 30
+	settlement.iron = 10
+	settlement.population = 5
+	settlement.food_rate = 3.0
+	settlement.production_rate = 2.0
+	settlement.gold_rate = 1.5
+	settlement.research_rate = 0.5
+	
+	# Get observation vector
+	var observation = obs.get_observation(settlement)
+	
+	# Validate observation size (93 total)
+	_assert_eq(observation.size(), 93, "observation vector has 93 elements")
+	
+	# All values should be normalized [0, 1] or [-1, 1] for ownership
+	var all_bounded = true
+	for i in range(observation.size()):
+		if observation[i] < -1.01 or observation[i] > 1.01:
+			all_bounded = false
+			break
+	_assert(all_bounded, "all observation values in [-1, 1] range")
+	
+	# Own state: resources should be normalized > 0 for non-zero values
+	_assert(observation[1] > 0.0, "food observation > 0 for food=150")
+	_assert(observation[2] > 0.0, "wood observation > 0 for wood=80")
+	
+	# Settlement stage should be 0 for HUT
+	_assert_near(observation[6], 0.0, 0.01, "stage observation is 0 for HUT")
+	
+	# Population normalized
+	_assert(observation[7] > 0.0, "population observation > 0")
+	
+	# Test _normalize helper
+	_assert_near(obs._normalize(50.0, 0.0, 100.0), 0.5, 0.01, "normalize 50/100 = 0.5")
+	_assert_near(obs._normalize(0.0, 0.0, 100.0), 0.0, 0.01, "normalize 0/100 = 0.0")
+	_assert_near(obs._normalize(100.0, 0.0, 100.0), 1.0, 0.01, "normalize 100/100 = 1.0")
+	_assert_near(obs._normalize(200.0, 0.0, 100.0), 1.0, 0.01, "normalize clamps above 1.0")
+	_assert_near(obs._normalize(-10.0, 0.0, 100.0), 0.0, 0.01, "normalize clamps below 0.0")
+	
+	# Test with zero range (edge case)
+	_assert_near(obs._normalize(5.0, 5.0, 5.0), 0.0, 0.01, "normalize returns 0 for zero range")
+
+# ==================== AI Action Space Tests ====================
+
+func _run_ai_action_space_tests() -> void:
+	_suite("AI Action Space")
+	
+	var act = AgentActions.new()
+	
+	# Test action enum completeness
+	_assert_eq(act.NUM_ACTIONS, 13, "13 actions defined")
+	_assert_eq(int(AgentActions.Action.IDLE), 0, "IDLE is action 0")
+	_assert_eq(int(AgentActions.Action.BUILD_MARKETPLACE), 12, "BUILD_MARKETPLACE is action 12")
+	
+	# Test softmax produces valid probability distribution
+	var raw_outputs: Array = [1.0, 2.0, 0.5, -1.0, 0.0, 0.3, 0.7, -0.5, 1.5, 0.1, -0.2, 0.8, 0.4]
+	var probs = act._softmax(raw_outputs)
+	_assert_eq(probs.size(), 13, "softmax output has 13 elements")
+	
+	var prob_sum = 0.0
+	var all_positive = true
+	for p in probs:
+		prob_sum += p
+		if p < 0.0:
+			all_positive = false
+	_assert(all_positive, "all softmax probabilities >= 0")
+	_assert_near(prob_sum, 1.0, 0.01, "softmax probabilities sum to 1.0")
+	
+	# Test highest value gets highest probability
+	var max_idx = 0
+	var max_prob = probs[0]
+	for i in range(1, probs.size()):
+		if probs[i] > max_prob:
+			max_prob = probs[i]
+			max_idx = i
+	_assert_eq(max_idx, 1, "highest raw output (idx 1) gets highest probability")
+	
+	# Test select_action with settlement for validation
+	var settlement = Settlement.new()
+	settlement.food = 200
+	settlement.wood = 100
+	settlement.stone = 100
+	settlement.gold = 100
+	settlement.production = 200
+	settlement.population = 10
+	settlement.buildings.append("barracks")
+	act.settlement = settlement
+	
+	# With settlement set, some actions should now be valid
+	_assert(act.is_action_valid(AgentActions.Action.SPAWN_WARRIOR), "warrior spawn valid with settlement+barracks")
+	_assert(act.is_action_valid(AgentActions.Action.SPAWN_WORKER), "worker spawn valid with settlement")
+	_assert(act.is_action_valid(AgentActions.Action.BUILD_GRANARY), "granary build valid")
+	_assert(!act.is_action_valid(AgentActions.Action.BUILD_BARRACKS), "barracks invalid - already has barracks (needs wood/stone check)")
+	
+	# Test get_best_valid_action picks valid action
+	var best = act.get_best_valid_action(probs)
+	_assert(act.is_action_valid(best), "best valid action is actually valid")
+	
+	# Test action cooldowns
+	for action in AgentActions.Action.values():
+		var cd = act.get_action_cooldown(action)
+		_assert(cd >= 0.0, "cooldown >= 0 for action " + str(action))
+	
+	# Test AIController can be instantiated
+	var controller = AIController.new()
+	_assert_eq(controller.actions_taken, 0, "controller starts with 0 actions")
+	_assert_near(controller.get_success_rate(), 0.0, 0.01, "success rate 0 with no actions")
+	
+	# Test fitness penalty for invalid actions
+	var fc = FitnessCalculator.new()
+	var agent_data = {
+		"tiles_owned": 10, "settlement_stage": 1, "buildings_count": 3,
+		"techs_unlocked": 2, "culture_score": 50, "units_killed": 5,
+		"units_lost": 2, "invalid_action_rate": 0.0
+	}
+	var episode_data = {
+		"ticks_survived": 1500, "total_map_tiles": 100,
+		"victory_achieved": false, "victory_type": "none"
+	}
+	var fitness_clean = fc.calculate_fitness(agent_data, episode_data)
+	
+	var agent_data_bad = agent_data.duplicate()
+	agent_data_bad["invalid_action_rate"] = 0.8
+	var fitness_bad = fc.calculate_fitness(agent_data_bad, episode_data)
+	_assert(fitness_bad[1] < fitness_clean[1], "high invalid rate reduces progression score")
 
 # Reference the constant for CPU opponent tests
 const STRATEGY_WEIGHTS = {

@@ -13,6 +13,7 @@ var player_id: int = 0
 # Performance tracking
 var actions_taken: int = 0
 var successful_actions: int = 0
+var invalid_action_attempts: int = 0
 var last_action_time: float = 0.0
 
 func _init():
@@ -52,7 +53,7 @@ func think_and_act() -> void:
 	# Run neural network
 	var nn_outputs = neural_network.forward(observation)
 	
-	# Select and execute action
+	# Select and execute action (select_action handles masking internally)
 	var action = actions.select_action(nn_outputs)
 	var success = actions.execute_action(action)
 	
@@ -71,3 +72,8 @@ func get_success_rate() -> float:
 	if actions_taken == 0:
 		return 0.0
 	return float(successful_actions) / float(actions_taken)
+
+func get_invalid_action_rate() -> float:
+	if actions_taken == 0:
+		return 0.0
+	return float(actions.invalid_action_attempts) / float(actions_taken)

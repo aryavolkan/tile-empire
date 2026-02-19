@@ -168,8 +168,9 @@ func _can_cross_terrain(tile: Tile) -> bool:
 	return false
 
 func _is_tile_hostile(tile: Tile) -> bool:
-	# Check if tile has enemy units or settlements
-	# This would need to check with the game's unit manager
+	# Check if tile is owned by another player
+	if tile.owner_id >= 0 and tile.owner_id != owner_id:
+		return true
 	return false
 
 func move_to(tile: Tile, path: Array[Vector2i] = []) -> bool:
@@ -373,6 +374,15 @@ func disembark() -> bool:
 	
 	action_performed.emit("disembark")
 	return true
+
+func counter_attack(attacker: Node) -> void:
+	if not can_attack or is_civilian or health <= 0:
+		return
+	var damage = max(1, int(defense_strength * randf_range(0.5, 0.8)))
+	attacker.take_damage(damage)
+
+func get_combat_strength() -> float:
+	return float(attack_strength + defense_strength) * (float(health) / float(max_health))
 
 func _destroy() -> void:
 	destroyed.emit()

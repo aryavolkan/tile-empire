@@ -175,15 +175,37 @@ func get_tile_resource_value(tile: Node) -> float:
 	return 0.0
 
 func get_unit_counts(settlement: Node) -> Dictionary:
-	# This would query the actual unit manager
-	return {
+	var counts = {
 		"warriors": 0,
 		"archers": 0,
 		"cavalry": 0,
 		"settlers": 0,
 		"workers": 0,
-		"total_strength": 0
+		"total_strength": 0.0
 	}
+	
+	# Query game_manager for units belonging to this player
+	if game_manager and game_manager.has_method("get_player_units"):
+		var units = game_manager.get_player_units(player_index)
+		for unit in units:
+			var utype = unit.get("unit_type") if unit.has_method("get") else null
+			if utype == null and "unit_type" in unit:
+				utype = unit.unit_type
+			match utype:
+				Unit.UnitType.WARRIOR:
+					counts.warriors += 1
+				Unit.UnitType.ARCHER:
+					counts.archers += 1
+				Unit.UnitType.SCOUT:
+					counts.cavalry += 1  # scouts fill cavalry slot
+				Unit.UnitType.SETTLER:
+					counts.settlers += 1
+				Unit.UnitType.WORKER:
+					counts.workers += 1
+			if unit.has_method("get_combat_strength"):
+				counts.total_strength += unit.get_combat_strength()
+	
+	return counts
 
 func get_garrison_strength(settlement: Node) -> float:
 	if settlement.has_method("get_garrison_strength"):
@@ -216,12 +238,35 @@ func get_available_tech_count() -> int:
 	return 0
 
 func get_nearest_enemy_info(settlement: Node) -> Dictionary:
-	# This would find actual nearest enemy
-	return {
-		"distance": 10.0,
+	var info = {
+		"distance": MAX_TILE_DISTANCE,
 		"strength_ratio": 1.0,
 		"is_threatening": false
 	}
+	
+	if not game_manager or not game_manager.has_method("get_enemy_settlements"):
+		return info
+	
+	var enemies = game_manager.get_enemy_settlements(player_index)
+	var my_pos = settlement.position if settlement else Vector2.ZERO
+	var nearest_dist = MAX_TILE_DISTANCE
+	var nearest_enemy = null
+	
+	for enemy in enemies:
+		var dist = my_pos.distance_to(enemy.position) if enemy else MAX_TILE_DISTANCE
+		if dist < nearest_dist:
+			nearest_dist = dist
+			nearest_enemy = enemy
+	
+	info.distance = nearest_dist
+	
+	if nearest_enemy:
+		var my_strength = settlement.get_garrison_strength() if settlement.has_method("get_garrison_strength") else 10.0
+		var enemy_strength = nearest_enemy.get_garrison_strength() if nearest_enemy.has_method("get_garrison_strength") else 10.0
+		info.strength_ratio = enemy_strength / maxf(my_strength, 1.0)
+		info.is_threatening = info.strength_ratio > 1.5 and nearest_dist < 15.0
+	
+	return info
 
 func get_domination_progress() -> float:
 	if game_manager and game_manager.has_method("get_domination_progress"):

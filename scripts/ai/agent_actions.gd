@@ -33,6 +33,7 @@ var settlement: Node
 var player_index: int = 0
 var last_action: Action = Action.IDLE
 var action_cooldowns: Dictionary = {}
+var invalid_action_attempts: int = 0
 
 func _init():
 	# Initialize cooldowns
@@ -56,6 +57,7 @@ func select_action(nn_outputs) -> Action:
 	
 	# Check if action is valid/available
 	if not is_action_valid(action):
+		invalid_action_attempts += 1
 		# Find best valid action
 		action = get_best_valid_action(probabilities)
 	
