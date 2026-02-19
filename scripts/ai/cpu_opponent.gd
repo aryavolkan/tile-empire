@@ -23,6 +23,9 @@ var _threat_cache: Dictionary = {}  # player_id -> threat_level
 var _threat_cache_age: float = 0.0
 const THREAT_CACHE_TTL: float = 5.0
 
+# Rust-accelerated influence map (optional)
+var _influence_map = null
+
 # Priority weights per difficulty (expand, defend, upgrade, economy, military, tech)
 const STRATEGY_WEIGHTS := {
 	"easy": {
@@ -47,6 +50,9 @@ func initialize(settlement_node: Node, player_index: int, diff: String = "easy")
 		"easy": think_interval = 3.0
 		"medium": think_interval = 2.0
 		"hard": think_interval = 1.0
+	# Try to create Rust InfluenceMap
+	if ClassDB.class_exists(&"InfluenceMap"):
+		_influence_map = ClassDB.instantiate(&"InfluenceMap")
 
 func set_game_references(game_mgr: Node, territory_mgr: Node, tech_mgr: Node) -> void:
 	game_manager = game_mgr
@@ -162,12 +168,46 @@ func _try_expand_territory() -> void:
 	if expandable.is_empty():
 		return
 
+	# Use Rust InfluenceMap if available to boost scoring
+	var influence_grid: PackedFloat32Array = PackedFloat32Array()
+	if _influence_map and territory_manager.tile_map:
+		var tmap = territory_manager.tile_map
+		var w: int = tmap.map_width if "map_width" in tmap else 50
+		var h: int = tmap.map_height if "map_height" in tmap else 50
+		# Build unit positions dict and owner grid for influence computation
+		var unit_pos_by_player: Dictionary = {}
+		if game_manager and "player_units" in game_manager:
+			for pid in game_manager.player_units:
+				var positions: Array[Vector2i] = []
+				for u in game_manager.player_units[pid]:
+					if is_instance_valid(u) and u.current_tile:
+						positions.append(u.current_tile.grid_position)
+				unit_pos_by_player[pid] = positions
+		var owner_grid := PackedInt32Array()
+		owner_grid.resize(w * h)
+		owner_grid.fill(-1)
+		for pid in territory_manager.player_territories:
+			for tile in territory_manager.player_territories[pid]:
+				var gp = tile.grid_position
+				if gp.x >= 0 and gp.x < w and gp.y >= 0 and gp.y < h:
+					owner_grid[gp.y * w + gp.x] = pid
+		_influence_map.compute(unit_pos_by_player, owner_grid, w, h)
+		influence_grid = _influence_map.get_player_influence(player_id)
+
 	# Score each tile
 	var best_tile: Tile = null
 	var best_score: float = -INF
 
 	for tile in expandable:
 		var score = _score_tile_for_expansion(tile)
+		# Add influence bonus if available
+		if influence_grid.size() > 0 and territory_manager.tile_map:
+			var tmap = territory_manager.tile_map
+			var w: int = tmap.map_width if "map_width" in tmap else 50
+			var gp = tile.grid_position
+			var idx = gp.y * w + gp.x
+			if idx >= 0 and idx < influence_grid.size():
+				score += influence_grid[idx] * 0.5
 		if score > best_score:
 			best_score = score
 			best_tile = tile

@@ -10,6 +10,7 @@ signal expansion_available(player_id: int, available_tiles: Array[Tile])
 
 var tile_map: HexTileMap
 var player_territories: Dictionary = {}  # player_id -> Array[Tile]
+var _territory_frontier = null  # Rust-accelerated frontier finder
 var expansion_costs: Dictionary = {}  # player_id -> int
 var border_tensions: Dictionary = {}  # "player1_player2" -> float
 
@@ -20,6 +21,8 @@ const BORDER_TENSION_THRESHOLD = 5.0
 func initialize(map: HexTileMap) -> void:
 	tile_map = map
 	tile_map.territory_changed.connect(_on_territory_changed)
+	if ClassDB.class_exists(&"TerritoryFrontier"):
+		_territory_frontier = ClassDB.instantiate(&"TerritoryFrontier")
 
 func claim_starting_tile(player_id: int, tile: Tile) -> bool:
 	if tile.is_owned() or not tile.can_build_settlement():
@@ -35,6 +38,27 @@ func claim_starting_tile(player_id: int, tile: Tile) -> bool:
 	return true
 
 func get_expandable_tiles(player_id: int) -> Array[Tile]:
+	# Try Rust-accelerated frontier if available
+	if _territory_frontier and tile_map:
+		var w: int = tile_map.map_width if "map_width" in tile_map else 50
+		var h: int = tile_map.map_height if "map_height" in tile_map else 50
+		var owner_grid := PackedInt32Array()
+		owner_grid.resize(w * h)
+		owner_grid.fill(-1)
+		for pid in player_territories:
+			for tile in player_territories[pid]:
+				var gp = tile.grid_position
+				if gp.x >= 0 and gp.x < w and gp.y >= 0 and gp.y < h:
+					owner_grid[gp.y * w + gp.x] = pid
+		var frontier_positions: Array = _territory_frontier.get_frontier(owner_grid, player_id, w, h)
+		var expandable: Array[Tile] = []
+		for pos in frontier_positions:
+			var tile = tile_map.get_tile_at(pos) if tile_map.has_method("get_tile_at") else null
+			if tile and _can_expand_to(player_id, tile):
+				expandable.append(tile)
+		return expandable
+
+	# GDScript fallback
 	var expandable: Array[Tile] = []
 	var territory = player_territories.get(player_id, [])
 	
