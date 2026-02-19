@@ -22,6 +22,7 @@ var ai_timer: Timer
 var cpu_opponents: Array = []
 var player_ids_active: Array = [0, 1, 2, 3]  # 0 = human
 var scoreboard: RichTextLabel
+var scoreboard_bg: ColorRect
 
 func _ready() -> void:
 	# Check if in training mode
@@ -257,11 +258,11 @@ func _setup_scoreboard() -> void:
 	add_child(hud)
 
 	# Background
-	var bg = ColorRect.new()
-	bg.position = Vector2(8, 8)
-	bg.size = Vector2(260, 700)
-	bg.color = Color(0, 0, 0, 0.72)
-	hud.add_child(bg)
+	scoreboard_bg = ColorRect.new()
+	scoreboard_bg.position = Vector2(8, 8)
+	scoreboard_bg.size = Vector2(260, 700)
+	scoreboard_bg.color = Color(0, 0, 0, 0.72)
+	hud.add_child(scoreboard_bg)
 
 	scoreboard = RichTextLabel.new()
 	scoreboard.bbcode_enabled = true
@@ -335,11 +336,8 @@ func _update_scoreboard() -> void:
 	for pid in player_ids_active:
 		lines += 8  # player header + up to 6 terrain types + blank line
 	var needed_h = lines * line_height + 20
-	var bg = scoreboard.get_parent()  # CanvasLayer
-	# find the ColorRect sibling
-	for child in bg.get_children():
-		if child is ColorRect:
-			child.size.y = needed_h
+	if scoreboard_bg:
+		scoreboard_bg.size.y = needed_h
 	scoreboard.size.y = needed_h - 14
 	var player_tiles: Dictionary = {}
 	for pid in player_ids_active:
