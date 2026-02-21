@@ -38,8 +38,14 @@ jobs:
         run: cargo build --release
         working-directory: rust
 
+      - name: Install Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.2.2
+          use-dotnet: false
+
       - name: Import assets (headless)
-        run: /opt/homebrew/bin/godot --headless --editor --quit --path . || true
+        run: godot --headless --editor --quit --path . || true
 
       - name: Run tests
-        run: /opt/homebrew/bin/godot --headless --path . -s tests/run_tests.gd
+        run: godot --headless --path . -s tests/run_tests.gd
