@@ -149,7 +149,7 @@ func _setup_players() -> void:
 		var start_tile = candidates[i]
 		territory_manager.claim_starting_tile(player_id, start_tile)
 
-		var settlement = preload("res://scripts/entities/settlement.gd").new()
+		var settlement = Settlement.new()
 		settlement.initialize(start_tile, player_id, "AI %d" % player_id)
 		settlement.set_ai_difficulty("easy")
 		if settlements_container:
@@ -683,8 +683,7 @@ func _tile_has_enemy_unit(tile: Tile, for_player: int) -> bool:
 	return false
 
 func _do_spawn_unit(container: Node, tile: Tile, player_id: int, unit_type: int) -> void:
-	var unit_script = preload("res://scripts/entities/unit.gd")
-	var unit = unit_script.new()
+	var unit = Unit.new()
 	unit.initialize(tile, player_id, unit_type)
 	unit.position = tile_map.grid_to_world(tile.grid_position)
 	container.add_child(unit)
@@ -755,7 +754,7 @@ func get_valid_spawn_positions() -> Array:
 
 func create_settlement(position: Vector2, player_id: int) -> Node:
 	# Create and return a settlement node
-	var settlement = preload("res://scripts/entities/settlement.gd").new()
+	var settlement = Settlement.new()
 	settlement.position = position
 	settlement.player_id = player_id
 	add_child(settlement)
