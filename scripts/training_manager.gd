@@ -116,7 +116,7 @@ func _load_genome():
 	neural_net.from_genome(genome_data)
 	
 	print("Loaded genome with ", genome_data.get("nodes", []).size(), " nodes and ",
-		genome_data.get("connections", []).size(), " connections")
+		  genome_data.get("connections", []).size(), " connections")
 
 func start_episode():
 	"""Initialize a new training episode"""
@@ -347,9 +347,9 @@ func _finish_episode():
 	metrics["worker_id"] = worker_id
 	
 	print("Episode finished in ", episode_time, "s. Fitness: ",
-		"T=", metrics.territory_score,
-		" P=", metrics.progression_score,
-		" S=", metrics.survival_score)
+		  "T=", metrics.territory_score,
+		  " P=", metrics.progression_score,
+		  " S=", metrics.survival_score)
 	
 	# Write metrics to file
 	if metrics_path != "":
