@@ -299,9 +299,9 @@ impl InfluenceMap {
             for i in 0..w * h {
                 let own = raw[pid][i];
                 let mut max_enemy = 0.0f32;
-                for other in 0..np {
+                for (other, raw_other) in raw.iter().enumerate().take(np) {
                     if other != pid {
-                        max_enemy = max_enemy.max(raw[other][i]);
+                        max_enemy = max_enemy.max(raw_other[i]);
                     }
                 }
                 net[i] = own - max_enemy;
@@ -461,11 +461,11 @@ impl ResourceCounter {
         }
 
         let mut dict = Dictionary::new();
-        for pid in 0..np {
+        for (pid, totals_pid) in totals.iter().enumerate().take(np) {
             let mut arr = PackedInt32Array::new();
-            arr.push(totals[pid][0]);
-            arr.push(totals[pid][1]);
-            arr.push(totals[pid][2]);
+            arr.push(totals_pid[0]);
+            arr.push(totals_pid[1]);
+            arr.push(totals_pid[2]);
             let k = Variant::from(pid as i32);
             let v = Variant::from(arr);
             dict.set(&k, &v);
