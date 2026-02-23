@@ -137,7 +137,19 @@ func _calculate_progression_score(agent_data: Dictionary) -> float:
 		var growth_score = minf(growth_rate / 5.0, 1.0)  # Cap at 5 tiles/min
 		score += growth_score * 0.05
 		max_possible += 0.05
-	
+
+	# Happiness bonus (rewards keeping citizens content)
+	var happiness = agent_data.get("happiness", 0)
+	if happiness > 0:
+		score += minf(float(happiness) / 10.0, 1.0) * 0.05
+		max_possible += 0.05
+
+	# Trade income bonus (rewards economic development)
+	var trade_income = agent_data.get("trade_income", 0)
+	if trade_income > 0:
+		score += minf(float(trade_income) / 10.0, 1.0) * 0.05
+		max_possible += 0.05
+
 	var raw_score = clampf(score / max_possible, 0.0, 1.0)
 	
 	# Penalize high invalid action rates (encourages learning valid action masking)
@@ -203,7 +215,9 @@ func get_metrics_dict(agent_data: Dictionary, episode_data: Dictionary) -> Dicti
 		"victory_achieved": episode_data.get("victory_achieved", false),
 		"victory_type": episode_data.get("victory_type", "none"),
 		"resource_efficiency": agent_data.get("resource_efficiency", 0.0),
-		"territory_growth_rate": agent_data.get("territory_growth_rate", 0.0)
+		"territory_growth_rate": agent_data.get("territory_growth_rate", 0.0),
+		"happiness": agent_data.get("happiness", 0),
+		"trade_income": agent_data.get("trade_income", 0)
 	}
 
 func aggregate_fitness(fitness_array: Array) -> float:

@@ -281,6 +281,37 @@ func _run_settlement_tests() -> void:
 	settlement.population = 0
 	_assert(settlement.is_destroyed(), "destroyed at 0 population")
 
+	# Test happiness system
+	var happy_settlement = Settlement.new()
+	happy_settlement.population = 5
+	happy_settlement.food = 200
+	happy_settlement.wood = 100
+	happy_settlement.stone = 100
+	happy_settlement.gold = 100
+	_assert_near(happy_settlement.get_happiness_modifier(), 0.8, 0.01, "base happiness modifier is 0.8 (no buildings)")
+	happy_settlement.buildings.append("granary")
+	happy_settlement.buildings.append("temple")
+	var happy_h = happy_settlement.calculate_happiness()
+	_assert(happy_h > 0, "happiness > 0 with granary + temple")
+	_assert(happy_settlement.get_happiness_modifier() >= 1.0, "happiness modifier >= 1.0 when happy")
+
+	# Test trade income
+	_assert_eq(happy_settlement.calculate_trade_income(), 0, "no trade income without marketplace")
+	happy_settlement.buildings.append("marketplace")
+	_assert(happy_settlement.calculate_trade_income() > 0, "trade income > 0 with marketplace")
+
+	# Test temple can be built with granary + resources
+	var build_settlement = Settlement.new()
+	build_settlement.stone = 60
+	build_settlement.gold = 40
+	_assert(!build_settlement.can_build_structure("temple"), "can't build temple without granary")
+	build_settlement.buildings.append("granary")
+	_assert(build_settlement.can_build_structure("temple"), "can build temple with granary + resources")
+	build_settlement.build_structure("temple")
+	_assert("temple" in build_settlement.buildings, "temple built successfully")
+	_assert_eq(build_settlement.stone, 0, "stone deducted for temple")
+	_assert_eq(build_settlement.gold, 0, "gold deducted for temple")
+
 # ==================== Skill Tree Tests ====================
 
 func _run_skill_tree_tests() -> void:
@@ -562,7 +593,7 @@ func _run_training_pipeline_tests() -> void:
 	# Smoke test: AgentActions can be instantiated
 	var act = AgentActions.new()
 	_assert(act != null, "AgentActions instantiates")
-	_assert_eq(act.NUM_ACTIONS, 13, "action space has 13 actions")
+	_assert_eq(act.NUM_ACTIONS, 14, "action space has 14 actions")
 	
 	# Test action validity without game refs (should all be false except IDLE and COLLECT_RESOURCES)
 	_assert(act.is_action_valid(AgentActions.Action.IDLE), "IDLE always valid")
@@ -757,8 +788,8 @@ func _run_ai_observation_tests() -> void:
 	# Get observation vector
 	var observation = obs.get_observation(settlement)
 	
-	# Validate observation size (93 total)
-	_assert_eq(observation.size(), 93, "observation vector has 93 elements")
+	# Validate observation size (95 total)
+	_assert_eq(observation.size(), 95, "observation vector has 95 elements")
 	
 	# All values should be normalized [0, 1] or [-1, 1] for ownership
 	var all_bounded = true
@@ -796,14 +827,15 @@ func _run_ai_action_space_tests() -> void:
 	var act = AgentActions.new()
 	
 	# Test action enum completeness
-	_assert_eq(act.NUM_ACTIONS, 13, "13 actions defined")
+	_assert_eq(act.NUM_ACTIONS, 14, "14 actions defined")
 	_assert_eq(int(AgentActions.Action.IDLE), 0, "IDLE is action 0")
 	_assert_eq(int(AgentActions.Action.BUILD_MARKETPLACE), 12, "BUILD_MARKETPLACE is action 12")
-	
+	_assert_eq(int(AgentActions.Action.BUILD_TEMPLE), 13, "BUILD_TEMPLE is action 13")
+
 	# Test softmax produces valid probability distribution
-	var raw_outputs: Array = [1.0, 2.0, 0.5, -1.0, 0.0, 0.3, 0.7, -0.5, 1.5, 0.1, -0.2, 0.8, 0.4]
+	var raw_outputs: Array = [1.0, 2.0, 0.5, -1.0, 0.0, 0.3, 0.7, -0.5, 1.5, 0.1, -0.2, 0.8, 0.4, 0.6]
 	var probs = act._softmax(raw_outputs)
-	_assert_eq(probs.size(), 13, "softmax output has 13 elements")
+	_assert_eq(probs.size(), 14, "softmax output has 14 elements")
 	
 	var prob_sum = 0.0
 	var all_positive = true
@@ -839,6 +871,7 @@ func _run_ai_action_space_tests() -> void:
 	_assert(act.is_action_valid(AgentActions.Action.SPAWN_WORKER), "worker spawn valid with settlement")
 	_assert(act.is_action_valid(AgentActions.Action.BUILD_GRANARY), "granary build valid")
 	_assert(!act.is_action_valid(AgentActions.Action.BUILD_BARRACKS), "barracks invalid - already has barracks (needs wood/stone check)")
+	_assert(!act.is_action_valid(AgentActions.Action.BUILD_TEMPLE), "temple invalid without granary")
 	
 	# Test get_best_valid_action picks valid action
 	var best = act.get_best_valid_action(probs)

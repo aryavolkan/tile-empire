@@ -176,6 +176,8 @@ func start_episode():
 		"units_lost": 0,
 		"resource_efficiency": 0.0,
 		"territory_growth_rate": 0.0,
+		"happiness": 0,
+		"trade_income": 0,
 		"_prev_tiles_owned": 1,
 		"_total_resources_spent": 0,
 		"_total_resources_gained": 0,
@@ -291,6 +293,12 @@ func _update_metrics():
 	# Territory growth rate (tiles per minute)
 	var elapsed_minutes = maxf(episode_ticks / 3600.0, 0.01)  # 60 ticks/sec
 	agent_data["territory_growth_rate"] = float(current_tiles - 1) / elapsed_minutes
+
+	# Happiness and trade income
+	if ai_settlement.has_method("calculate_happiness"):
+		agent_data["happiness"] = ai_settlement.calculate_happiness()
+	if ai_settlement.has_method("calculate_trade_income"):
+		agent_data["trade_income"] = ai_settlement.calculate_trade_income()
 	
 	# Resource efficiency: ratio of territory+buildings gained to time
 	var total_output = current_tiles + agent_data["buildings_count"] + int(ai_settlement.stage) * 3
@@ -302,7 +310,8 @@ func _get_total_buildings() -> int:
 	total += observer.get_building_count(ai_settlement, "granary")
 	total += observer.get_building_count(ai_settlement, "barracks")
 	total += observer.get_building_count(ai_settlement, "marketplace")
-	# Add other building types as implemented
+	total += observer.get_building_count(ai_settlement, "temple")
+	total += observer.get_building_count(ai_settlement, "library")
 	return total
 
 func _check_episode_end() -> bool:

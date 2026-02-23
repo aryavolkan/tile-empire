@@ -17,10 +17,11 @@ enum Action {
 	COLLECT_RESOURCES,
 	BUILD_GRANARY,
 	BUILD_BARRACKS,
-	BUILD_MARKETPLACE
+	BUILD_MARKETPLACE,
+	BUILD_TEMPLE
 }
 
-const NUM_ACTIONS = 13
+const NUM_ACTIONS = 14
 
 # Game references
 var game_manager: Node
@@ -112,7 +113,10 @@ func execute_action(action: Action) -> bool:
 			
 		Action.BUILD_MARKETPLACE:
 			return build_structure("marketplace")
-	
+
+		Action.BUILD_TEMPLE:
+			return build_structure("temple")
+
 	return false
 
 func update_cooldowns(delta: float):
@@ -167,7 +171,10 @@ func is_action_valid(action: Action) -> bool:
 			
 		Action.BUILD_MARKETPLACE:
 			return can_build_structure("marketplace")
-	
+
+		Action.BUILD_TEMPLE:
+			return can_build_structure("temple")
+
 	return false
 
 func get_best_valid_action(probabilities) -> Action:
@@ -195,7 +202,7 @@ func get_action_cooldown(action: Action) -> float:
 			return 15.0
 		Action.UPGRADE_SETTLEMENT:
 			return 60.0
-		Action.BUILD_GRANARY, Action.BUILD_BARRACKS, Action.BUILD_MARKETPLACE:
+		Action.BUILD_GRANARY, Action.BUILD_BARRACKS, Action.BUILD_MARKETPLACE, Action.BUILD_TEMPLE:
 			return 20.0
 		_:
 			return 2.0
