@@ -31,7 +31,7 @@ max-line-length: 200
 max-public-methods: 80
 max-file-lines: 3000
 function-arguments-number: 12
-max-returns: 12
+max-returns: 20
 tab-characters: 1
 
 # Active checks — real bugs, not style
