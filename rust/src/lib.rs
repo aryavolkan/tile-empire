@@ -1,7 +1,7 @@
-use godot::prelude::*;
 use godot::builtin::Variant;
-use std::collections::BinaryHeap;
+use godot::prelude::*;
 use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 
 struct TileEmpireExtension;
 
@@ -26,13 +26,13 @@ impl HexMath {
     /// Get hex neighbors for odd-q offset coordinates.
     #[func]
     fn hex_neighbors(pos: Vector2i) -> Array<Vector2i> {
-        let dirs_even: [(i32, i32); 6] = [
-            (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (0, 1),
-        ];
-        let dirs_odd: [(i32, i32); 6] = [
-            (1, 1), (1, 0), (0, -1), (-1, 0), (-1, 1), (0, 1),
-        ];
-        let dirs = if pos.x & 1 == 0 { &dirs_even } else { &dirs_odd };
+        let dirs_even: [(i32, i32); 6] = [(1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (0, 1)];
+        let dirs_odd: [(i32, i32); 6] = [(1, 1), (1, 0), (0, -1), (-1, 0), (-1, 1), (0, 1)];
+        let dirs = if pos.x & 1 == 0 {
+            &dirs_even
+        } else {
+            &dirs_odd
+        };
         let mut result = Array::new();
         for &(dx, dy) in dirs {
             result.push(Vector2i::new(pos.x + dx, pos.y + dy));
@@ -54,8 +54,7 @@ impl HexMath {
     ) -> Array<Vector2i> {
         use std::collections::{HashMap, HashSet};
 
-        let blocked_set: HashSet<(i32, i32)> =
-            blocked.iter_shared().map(|v| (v.x, v.y)).collect();
+        let blocked_set: HashSet<(i32, i32)> = blocked.iter_shared().map(|v| (v.x, v.y)).collect();
 
         if blocked_set.contains(&(to.x, to.y)) {
             return Array::new();
@@ -69,11 +68,15 @@ impl HexMath {
         }
 
         impl PartialEq for Node {
-            fn eq(&self, other: &Self) -> bool { self.f == other.f }
+            fn eq(&self, other: &Self) -> bool {
+                self.f == other.f
+            }
         }
         impl Eq for Node {}
         impl PartialOrd for Node {
-            fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                Some(self.cmp(other))
+            }
         }
         impl Ord for Node {
             fn cmp(&self, other: &Self) -> Ordering {
@@ -90,7 +93,11 @@ impl HexMath {
 
         g_scores.insert(start, 0.0);
         let h = Self::hex_distance(from, to) as f64;
-        open.push(Node { pos: start, g: 0.0, f: h });
+        open.push(Node {
+            pos: start,
+            g: 0.0,
+            f: h,
+        });
 
         while let Some(current) = open.pop() {
             if current.pos == goal {
@@ -124,15 +131,12 @@ impl HexMath {
                     continue;
                 }
 
-                let dist_from_start =
-                    Self::hex_distance(from, Vector2i::new(np.0, np.1));
+                let dist_from_start = Self::hex_distance(from, Vector2i::new(np.0, np.1));
                 if dist_from_start > max_distance {
                     continue;
                 }
 
-                let cost: f64 = costs
-                    .get(n)
-                    .unwrap_or(1.0);
+                let cost: f64 = costs.get(n).unwrap_or(1.0);
 
                 let tentative_g = current_g + cost;
                 let prev_g = *g_scores.get(&np).unwrap_or(&f64::MAX);
@@ -140,7 +144,11 @@ impl HexMath {
                     came_from.insert(np, current.pos);
                     g_scores.insert(np, tentative_g);
                     let h = Self::hex_distance(Vector2i::new(np.0, np.1), to) as f64;
-                    open.push(Node { pos: np, g: tentative_g, f: tentative_g + h });
+                    open.push(Node {
+                        pos: np,
+                        g: tentative_g,
+                        f: tentative_g + h,
+                    });
                 }
             }
         }
@@ -159,9 +167,23 @@ fn to_axial(pos: Vector2i) -> (i32, i32) {
 /// Get hex neighbors for odd-q offset coordinates (standalone helper).
 fn hex_neighbors_vec(x: i32, y: i32) -> [(i32, i32); 6] {
     if x & 1 == 0 {
-        [(x+1,y),(x+1,y-1),(x,y-1),(x-1,y-1),(x-1,y),(x,y+1)]
+        [
+            (x + 1, y),
+            (x + 1, y - 1),
+            (x, y - 1),
+            (x - 1, y - 1),
+            (x - 1, y),
+            (x, y + 1),
+        ]
     } else {
-        [(x+1,y+1),(x+1,y),(x,y-1),(x-1,y),(x-1,y+1),(x,y+1)]
+        [
+            (x + 1, y + 1),
+            (x + 1, y),
+            (x, y - 1),
+            (x - 1, y),
+            (x - 1, y + 1),
+            (x, y + 1),
+        ]
     }
 }
 
@@ -201,11 +223,15 @@ impl InfluenceMap {
         let mut max_pid: i32 = -1;
         for key in unit_positions_by_player.keys_array().iter_shared() {
             let pid = i32::from_variant(&key);
-            if pid > max_pid { max_pid = pid; }
+            if pid > max_pid {
+                max_pid = pid;
+            }
         }
         for i in 0..territory_owner_grid.len() {
             let v = territory_owner_grid[i];
-            if v > max_pid { max_pid = v; }
+            if v > max_pid {
+                max_pid = v;
+            }
         }
         let np = (max_pid + 1).max(0) as usize;
         self.num_players = np;
@@ -220,7 +246,9 @@ impl InfluenceMap {
         // Add unit influence
         for key in unit_positions_by_player.keys_array().iter_shared() {
             let pid = i32::from_variant(&key) as usize;
-            if pid >= np { continue; }
+            if pid >= np {
+                continue;
+            }
             let val_variant = unit_positions_by_player.get(&key).unwrap();
             let positions: Array<Vector2i> = Array::from_variant(&val_variant);
             for pos in positions.iter_shared() {
@@ -230,7 +258,9 @@ impl InfluenceMap {
                     for dx in -max_range..=max_range {
                         let nx = cx + dx;
                         let ny = cy + dy;
-                        if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 { continue; }
+                        if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                            continue;
+                        }
                         let dist_sq = (dx * dx + dy * dy) as f32;
                         let val = 2.0 * (-dist_sq / two_sigma_sq).exp();
                         raw[pid][ny as usize * w + nx as usize] += val;
@@ -242,7 +272,9 @@ impl InfluenceMap {
         // Add territory influence
         for i in 0..territory_owner_grid.len() {
             let owner = territory_owner_grid[i];
-            if owner < 0 || owner as usize >= np { continue; }
+            if owner < 0 || owner as usize >= np {
+                continue;
+            }
             let cx = (i % w) as i32;
             let cy = (i / w) as i32;
             let pid = owner as usize;
@@ -250,7 +282,9 @@ impl InfluenceMap {
                 for dx in -max_range..=max_range {
                     let nx = cx + dx;
                     let ny = cy + dy;
-                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 { continue; }
+                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                        continue;
+                    }
                     let dist_sq = (dx * dx + dy * dy) as f32;
                     let val = 0.5 * (-dist_sq / two_sigma_sq).exp();
                     raw[pid][ny as usize * w + nx as usize] += val;
@@ -312,15 +346,23 @@ impl TerritoryFrontier {
         let mut result = Array::new();
 
         for i in 0..owner_grid.len().min(w * h) {
-            if owner_grid[i] != player_id { continue; }
+            if owner_grid[i] != player_id {
+                continue;
+            }
             let x = (i % w) as i32;
             let y = (i / w) as i32;
             for (nx, ny) in hex_neighbors_vec(x, y) {
-                if nx < 0 || ny < 0 || nx >= map_width || ny >= map_height { continue; }
+                if nx < 0 || ny < 0 || nx >= map_width || ny >= map_height {
+                    continue;
+                }
                 let ni = ny as usize * w + nx as usize;
-                if ni >= owner_grid.len() { continue; }
+                if ni >= owner_grid.len() {
+                    continue;
+                }
                 let owner = owner_grid[ni];
-                if owner == player_id { continue; }
+                if owner == player_id {
+                    continue;
+                }
                 // Skip water (type check not available here — caller filters or we accept all non-owned)
                 if frontier_set.insert((nx, ny)) {
                     result.push(Vector2i::new(nx, ny));
@@ -358,8 +400,12 @@ impl CombatQuery {
         // Simple O(n^2) — fine for <200 units on 50x50 map
         for i in 0..n {
             for j in 0..n {
-                if i == j { continue; }
-                if owners[i] == owners[j] { continue; }
+                if i == j {
+                    continue;
+                }
+                if owners[i] == owners[j] {
+                    continue;
+                }
                 let dx = pos[i].x - pos[j].x;
                 let dy = pos[i].y - pos[j].y;
                 if dx * dx + dy * dy <= r2 {
@@ -396,7 +442,9 @@ impl ResourceCounter {
         let n = tile_types.len().min(owner_grid.len());
         for i in 0..n {
             let owner = owner_grid[i];
-            if owner < 0 || owner as usize >= np { continue; }
+            if owner < 0 || owner as usize >= np {
+                continue;
+            }
             let (f, p, g) = match tile_types[i] {
                 0 => (1, 1, 0), // plains
                 1 => (0, 2, 0), // forest
@@ -449,7 +497,9 @@ impl HexLOS {
     ) -> bool {
         let w = map_width as usize;
         let dist = HexMath::hex_distance(from, to);
-        if dist <= 1 { return true; }
+        if dist <= 1 {
+            return true;
+        }
 
         // Convert to cube coords
         let (ax, ay) = to_axial(from);
@@ -510,12 +560,18 @@ mod tests {
 
     #[test]
     fn test_hex_distance_same() {
-        assert_eq!(HexMath::hex_distance(Vector2i::new(0, 0), Vector2i::new(0, 0)), 0);
+        assert_eq!(
+            HexMath::hex_distance(Vector2i::new(0, 0), Vector2i::new(0, 0)),
+            0
+        );
     }
 
     #[test]
     fn test_hex_distance_adjacent() {
-        assert_eq!(HexMath::hex_distance(Vector2i::new(0, 0), Vector2i::new(1, 0)), 1);
+        assert_eq!(
+            HexMath::hex_distance(Vector2i::new(0, 0), Vector2i::new(1, 0)),
+            1
+        );
     }
 
     #[test]
