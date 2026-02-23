@@ -3,23 +3,15 @@
 Tile Empire NEAT Training Worker - Refactored to use evolve-core
 """
 
-import json
 import os
 import random
 import sys
-from pathlib import Path
 
 # Add evolve-core to path
 sys.path.insert(0, os.path.expanduser("~/projects/evolve-core/python"))
 
 import wandb
-from evolve_core import (
-    NEATGenome, 
-    NEATEvolution, 
-    GodotWorker,
-    FitnessAggregator,
-    NSGA2Selection
-)
+from evolve_core import FitnessAggregator, GodotWorker, NEATEvolution, NEATGenome, NSGA2Selection
 
 # Paths
 GODOT_PATH = os.environ.get("GODOT_PATH", "/Applications/Godot.app/Contents/MacOS/Godot")
@@ -94,7 +86,7 @@ class TileEmpireWorker(GodotWorker):
         all_metrics = []
         
         # Run multiple episodes
-        for episode in range(config.eval_episodes):
+        for _episode in range(config.eval_episodes):
             # Extra args specific to Tile Empire
             extra_args = [
                 "--max-ticks", str(config.max_episode_ticks),

@@ -4,13 +4,13 @@ Tile Empire NEAT Training Worker
 Adapted from evolve project for tile-empire neuroevolution
 """
 
+import copy
 import json
 import os
+import random
 import subprocess
 import sys
-import time
 import uuid
-from pathlib import Path
 
 import wandb
 
@@ -109,16 +109,16 @@ class TileEmpireNEAT:
         }
         
         # Add input nodes
-        for i in range(self.input_size):
+        for _i in range(self.input_size):
             genome['nodes'].append({
                 'id': self.node_counter,
                 'type': 'input',
                 'bias': 0.0
             })
             self.node_counter += 1
-        
+
         # Add output nodes
-        for i in range(self.output_size):
+        for _i in range(self.output_size):
             genome['nodes'].append({
                 'id': self.node_counter,
                 'type': 'output',
@@ -208,10 +208,6 @@ class TileEmpireNEAT:
             json.dump(data, f, indent=2)
 
 
-import random
-import copy
-
-
 def evaluate_genome(genome, config, worker_id):
     """Evaluate a single genome by running Godot"""
     # Write genome to file
@@ -256,11 +252,11 @@ def evaluate_genome(genome, config, worker_id):
         timeout_seconds = (config.max_episode_ticks / 60.0) + 30  # Episode time + buffer
         
         try:
-            proc = subprocess.run(cmd, capture_output=True, timeout=timeout_seconds)
-            
+            subprocess.run(cmd, capture_output=True, timeout=timeout_seconds)
+
             # Read metrics
             if os.path.exists(metrics_path):
-                with open(metrics_path, 'r') as f:
+                with open(metrics_path) as f:
                     metrics = json.load(f)
                     all_metrics.append(metrics)
                     
@@ -305,7 +301,7 @@ def evaluate_genome(genome, config, worker_id):
 
 def train():
     """Main training loop"""
-    run = wandb.init()
+    wandb.init()
     config = wandb.config
     
     # Create NEAT instance
@@ -361,7 +357,6 @@ def train():
             generations_without_improvement = 0
             
             # Save best genome
-            best_genome = max(neat.population, key=lambda g: g['aggregate_fitness'])
             neat.save_population(os.path.join(GODOT_USER_DIR, f"best_population_gen{generation}.json"))
         else:
             generations_without_improvement += 1

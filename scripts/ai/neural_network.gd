@@ -1,4 +1,5 @@
 extends RefCounted
+class_name NeuralNetwork
 
 ## Tile Empire's neural network with evolvable weights and optional Elman recurrent memory.
 ## Architecture: inputs -> hidden (tanh) -> outputs (tanh)

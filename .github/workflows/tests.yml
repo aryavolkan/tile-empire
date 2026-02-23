@@ -33,9 +33,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Build Rust GDExtension
-        run: cargo build --release
+        run: cargo build
         working-directory: rust
 
       - name: Install Godot
