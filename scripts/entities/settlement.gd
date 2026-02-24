@@ -173,11 +173,12 @@ func calculate_production_yield() -> int:
 	# Building bonuses
 	if "barracks" in buildings:
 		total += BUILDING_EFFECTS.barracks.production
-	
+
 	# Stage bonuses
 	total += int(stage) * 3
-	
-	return total
+
+	# Happiness modifier: content workers produce more
+	return int(float(total) * get_happiness_modifier())
 
 func calculate_gold_yield() -> int:
 	var total = base_gold_yield
@@ -189,10 +190,13 @@ func calculate_gold_yield() -> int:
 	# Building bonuses
 	if "marketplace" in buildings:
 		total += BUILDING_EFFECTS.marketplace.gold
-	
+
 	# Stage bonuses
 	total += int(stage) * 2
-	
+
+	# Trade route income
+	total += trade_income
+
 	return total
 
 func calculate_science_yield() -> int:
@@ -326,6 +330,9 @@ var gold_rate: float = 1.0
 var research_rate: float = 0.0
 var ai_controller: Node = null
 var ai_difficulty: String = "easy"
+var happiness: int = 0
+var war_weariness: int = 0
+var trade_income: int = 0
 
 func set_ai_difficulty(difficulty: String) -> void:
 	ai_difficulty = difficulty
@@ -333,6 +340,42 @@ func set_ai_difficulty(difficulty: String) -> void:
 		ai_controller = preload("res://scripts/ai/cpu_opponent.gd").new()
 		add_child(ai_controller)
 		ai_controller.initialize(self, player_id, difficulty)
+
+func calculate_happiness() -> int:
+	var h = 0
+	# Building bonuses
+	if "granary" in buildings:
+		h += 1  # Food security improves morale
+	if "temple" in buildings:
+		h += BUILDING_EFFECTS.temple.happiness
+	if "palace" in buildings:
+		h += BUILDING_EFFECTS.palace.happiness
+	# Food surplus contributes to happiness
+	var food_yield = calculate_food_yield()
+	var food_consumed = population * 2
+	var surplus = food_yield - food_consumed
+	h += clamp(surplus / 2, -3, 2)
+	# War weariness penalty
+	h -= war_weariness
+	# Stage bonus — larger empires have more entertainment options
+	h += int(stage)
+	return clamp(h, -5, 10)
+
+func get_happiness_modifier() -> float:
+	if happiness <= 0:
+		return 0.8
+	elif happiness <= 3:
+		return 1.0
+	elif happiness <= 6:
+		return 1.1
+	else:
+		return 1.2
+
+func calculate_trade_income() -> int:
+	if not "marketplace" in buildings:
+		return 0
+	# Trade routes scale with empire size
+	return (int(stage) + 1) * 2
 
 func get_player_id() -> int:
 	return player_id
@@ -420,6 +463,8 @@ func can_build_structure(structure_type: String) -> bool:
 			return wood >= 80 and gold >= 50
 		"library":
 			return "marketplace" in buildings and stone >= 100
+		"temple":
+			return "granary" in buildings and stone >= 60 and gold >= 40
 		_:
 			return false
 
@@ -439,7 +484,10 @@ func build_structure(structure_type: String) -> bool:
 			gold -= 50
 		"library":
 			stone -= 100
-	
+		"temple":
+			stone -= 60
+			gold -= 40
+
 	buildings.append(structure_type)
 	_update_yields()
 	print("Settlement ", settlement_name, " built ", structure_type)
@@ -465,6 +513,9 @@ var production: int = 50
 
 func _update_yields() -> void:
 	# Recalculate resource rates based on buildings and worked tiles
+	# Order matters: trade_income and happiness must be updated before rates that depend on them
+	trade_income = calculate_trade_income()
+	happiness = calculate_happiness()
 	food_rate = calculate_food_yield()
 	production_rate = calculate_production_yield()
 	gold_rate = calculate_gold_yield()

@@ -1,7 +1,7 @@
 extends Node
 
 ## AI Agent Observer - Converts game state to neural network inputs
-## Input count: 93 total inputs
+## Input count: 95 total inputs
 
 class_name AgentObserver
 
@@ -25,13 +25,14 @@ func _init():
 func get_observation(settlement: Node) -> Array[float]:
 	"""
 	Get normalized observation vector for the neural network.
-	Total inputs: 93
+	Total inputs: 95
 	- Own state: 15 inputs
 	- Nearby tiles: 60 inputs (12 tiles * 5 features each)
 	- Military: 8 inputs
 	- Tech progress: 4 inputs
 	- Enemy info: 3 inputs
 	- Victory progress: 3 inputs
+	- New mechanics: 2 inputs (happiness, trade income)
 	"""
 	var observation: Array[float] = []
 	
@@ -110,7 +111,11 @@ func get_observation(settlement: Node) -> Array[float]:
 	observation.append(get_domination_progress())  # already 0-1
 	observation.append(_normalize(get_culture_score(), 0.0, 1000.0))
 	observation.append(_normalize(get_tech_victory_progress(), 0.0, 1.0))
-	
+
+	# === New Mechanics (2 inputs) ===
+	observation.append(_normalize(get_happiness(settlement), -5.0, 10.0))
+	observation.append(_normalize(get_trade_income(settlement), 0.0, 20.0))
+
 	return observation
 
 func _normalize(value: float, min_val: float, max_val: float) -> float:
@@ -282,3 +287,15 @@ func get_tech_victory_progress() -> float:
 	if tech_tree and tech_tree.has_method("get_victory_progress"):
 		return tech_tree.get_victory_progress()
 	return 0.0
+
+func get_happiness(settlement: Node) -> int:
+	if settlement.has_method("calculate_happiness"):
+		return settlement.calculate_happiness()
+	var h = settlement.get("happiness")
+	return h if h != null else 0
+
+func get_trade_income(settlement: Node) -> int:
+	if settlement.has_method("calculate_trade_income"):
+		return settlement.calculate_trade_income()
+	var t = settlement.get("trade_income")
+	return t if t != null else 0
