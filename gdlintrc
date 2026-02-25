@@ -9,6 +9,7 @@ disable:
   - no-elif-return            # stylistic preference
   - trailing-whitespace       # handled by editors; too noisy on existing code
   - unused-argument           # common pattern for virtual method overrides in GDScript
+  - max-returns               # functions in AI code often have many early exits
 
 # Naming conventions
 class-name: "([A-Z][a-z0-9]*)+"

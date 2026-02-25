@@ -2,6 +2,34 @@ extends Node2D
 
 ## Main game controller
 
+
+const WARRIOR_SPEED = 90.0   # pixels per second
+const TANK_SPEED = 45.0      # tanks move at half warrior speed
+const RECENTLY_LOST_MAX_AGE_MS = 30000  # 30 seconds
+const RECENTLY_LOST_MAX_TICKS = 20      # 20 AI ticks
+const TANK_SHOOT_RANGE = 180.0        # px — tanks kill enemy warriors in this radius
+const WARRIOR_COST = {"food": 10, "production": 8}
+const TANK_COST    = {"food": 5,  "production": 25}
+const RESOURCE_TICK = 2.0  # seconds between resource collection
+## Must match tile_map.gd PLAYER_PALETTE exactly (as hex strings)
+const SCORE_PLAYER_COLORS = {
+	0: "f2e619",  # yellow — human
+	1: "d926d9",  # magenta
+	2: "ff8000",  # orange
+	3: "0de6be",  # cyan
+	4: "ffffff",
+}
+## Terrain type info: name + buff description
+const TILE_INFO = {
+	0: ["Grassland", "+Food"],
+	1: ["Forest",    "+Production"],
+	2: ["Mountain",  "+Defense/Stone"],
+	3: ["Water",     "Impassable"],
+	4: ["Desert",    "+Gold"],
+	5: ["Tundra",    "+Cold Resist"],
+}
+const HUMAN_PLAYER_ID = 0  # player 0 is the human
+
 var tile_map_script = preload("res://scripts/world/tile_map.gd")
 var territory_manager_script = preload("res://scripts/systems/territory_manager.gd")
 var skill_tree_script = preload("res://scripts/systems/skill_tree.gd")
@@ -24,24 +52,43 @@ var player_ids_active: Array = [0, 1, 2, 3]  # 0 = human
 var scoreboard: RichTextLabel
 var scoreboard_bg: ColorRect
 
+
+var unit_target_tile: Dictionary = {}  # unit -> Tile (next destination)
+var recently_lost: Array[Tile] = []    # tiles recently stolen from us — tanks reclaim
+var recently_lost_time: Dictionary = {} # tile -> timestamp (msec) when added
+var recently_lost_tick: Dictionary = {} # tile -> AI tick count when added
+var ai_tick_count: int = 0
+var tank_has_fired: Dictionary = {}    # tank -> true once it uses its single shot
+var shoot_flashes: Array = []          # [{from, to, ttl}] for visual feedback
+
+# Human player resources
+var res_food: float = 20.0
+var res_production: float = 20.0
+var res_gold: float = 20.0
+var resource_timer: float = 0.0
+var resource_label: RichTextLabel
+
+var player_units: Dictionary = {}  # player_id -> Array[Unit]
+var player_start_tiles: Dictionary = {}  # player_id -> Tile
+
 func _ready() -> void:
 	# Check if in training mode
 	_check_training_mode()
-	
+
 	# Ensure expected scene nodes exist (autoloads won't have them)
 	_ensure_scene_nodes()
-	
+
 	# Initialize core systems
 	_setup_map()
 	_setup_systems()
 	if not is_training_mode:
 		# Defer _setup_players so tile_map._ready() fires first (populates tiles)
 		call_deferred("_setup_players")
-	
+
 	if not is_training_mode:
 		_setup_camera()
 		_setup_scoreboard()
-		
+
 		# Connect signals for normal gameplay
 		tile_map.tile_clicked.connect(_on_tile_clicked)
 		territory_manager.territory_expanded.connect(_on_territory_expanded)
@@ -66,19 +113,19 @@ func _ensure_scene_nodes() -> void:
 		world = Node2D.new()
 		world.name = "World"
 		add_child(world)
-	
+
 	var tile_map_container = world.get_node_or_null("TileMap")
 	if tile_map_container == null:
 		tile_map_container = Node2D.new()
 		tile_map_container.name = "TileMap"
 		world.add_child(tile_map_container)
-	
+
 	for child_name in ["Units", "Settlements"]:
 		if world.get_node_or_null(child_name) == null:
 			var container = Node2D.new()
 			container.name = child_name
 			world.add_child(container)
-	
+
 	camera = get_node_or_null("Camera2D")
 	if camera == null:
 		camera = Camera2D.new()
@@ -91,7 +138,7 @@ func _setup_map() -> void:
 	if tile_map_container == null:
 		push_error("TileMap container missing; cannot initialize map")
 		return
-	
+
 	tile_map = tile_map_script.new()
 	tile_map_container.add_child(tile_map)
 	tile_map.generate()
@@ -102,16 +149,16 @@ func _setup_systems() -> void:
 	territory_manager = territory_manager_script.new()
 	add_child(territory_manager)
 	territory_manager.initialize(tile_map)
-	
+
 	# Skill/tech tree
 	skill_tree = skill_tree_script.new()
 	add_child(skill_tree)
-	
+
 	# Progression system
 	progression_system = progression_script.new()
 	add_child(progression_system)
 	progression_system.initialize(territory_manager, skill_tree)
-	
+
 	# Multiplayer
 	multiplayer_manager = multiplayer_manager_script.new()
 	add_child(multiplayer_manager)
@@ -169,29 +216,6 @@ func _setup_players() -> void:
 	_update_scoreboard()
 	_start_ai_loop()
 
-const WARRIOR_SPEED = 90.0   # pixels per second
-const TANK_SPEED = 45.0      # tanks move at half warrior speed
-
-var unit_target_tile: Dictionary = {}  # unit -> Tile (next destination)
-var recently_lost: Array[Tile] = []    # tiles recently stolen from us — tanks reclaim
-var recently_lost_time: Dictionary = {} # tile -> timestamp (msec) when added
-var recently_lost_tick: Dictionary = {} # tile -> AI tick count when added
-var ai_tick_count: int = 0
-const RECENTLY_LOST_MAX_AGE_MS = 30000  # 30 seconds
-const RECENTLY_LOST_MAX_TICKS = 20      # 20 AI ticks
-const TANK_SHOOT_RANGE = 180.0        # px — tanks kill enemy warriors in this radius
-var tank_has_fired: Dictionary = {}    # tank -> true once it uses its single shot
-var shoot_flashes: Array = []          # [{from, to, ttl}] for visual feedback
-
-# Human player resources
-var res_food: float = 20.0
-var res_production: float = 20.0
-var res_gold: float = 20.0
-const WARRIOR_COST = {"food": 10, "production": 8}
-const TANK_COST    = {"food": 5,  "production": 25}
-const RESOURCE_TICK = 2.0  # seconds between resource collection
-var resource_timer: float = 0.0
-var resource_label: RichTextLabel
 
 func _process(delta: float) -> void:
 	if is_training_mode:
@@ -226,7 +250,7 @@ func _input(event: InputEvent) -> void:
 		return
 	if camera == null:
 		return
-	
+
 	# Camera controls
 	if event.is_action("camera_pan"):
 		if event.is_pressed():
@@ -234,13 +258,13 @@ func _input(event: InputEvent) -> void:
 			camera.set_meta("pan_start", event.position)
 		else:
 			camera.set_meta("panning", false)
-	
+
 	if event is InputEventMouseMotion and camera.get_meta("panning", false):
 		var pan_start = camera.get_meta("pan_start", Vector2.ZERO)
 		var delta = event.position - pan_start
 		camera.position -= delta * 0.5
 		camera.set_meta("pan_start", event.position)
-	
+
 	# Zoom controls (scroll wheel + keyboard +/-)
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
@@ -318,23 +342,6 @@ func _setup_scoreboard() -> void:
 	hint.offset_top = -30
 	hud.add_child(hint)
 
-## Must match tile_map.gd PLAYER_PALETTE exactly (as hex strings)
-const SCORE_PLAYER_COLORS = {
-	0: "f2e619",  # yellow — human
-	1: "d926d9",  # magenta
-	2: "ff8000",  # orange
-	3: "0de6be",  # cyan
-	4: "ffffff",
-}
-## Terrain type info: name + buff description
-const TILE_INFO = {
-	0: ["Grassland", "+Food"],
-	1: ["Forest",    "+Production"],
-	2: ["Mountain",  "+Defense/Stone"],
-	3: ["Water",     "Impassable"],
-	4: ["Desert",    "+Gold"],
-	5: ["Tundra",    "+Cold Resist"],
-}
 
 func _update_scoreboard() -> void:
 	if scoreboard == null or tile_map == null:
@@ -366,12 +373,10 @@ func _update_scoreboard() -> void:
 		text += "\n[color=#%s][b]▮ Player %d[/b][/color]  [b]%d tiles[/b]\n" % [col, pid, total]
 		for t_type in player_tiles[pid]:
 			var info = TILE_INFO.get(t_type, ["?", ""])
-			text += "  [color=#aaaaaa]%s[/color] [color=#ffdd88]%s[/color]: %d\n" % [info[0], info[1], player_tiles[pid][t_type]]
+			var tile_text := "  [color=#aaaaaa]%s[/color] [color=#ffdd88]%s[/color]: %d\n"
+			text += tile_text % [info[0], info[1], player_tiles[pid][t_type]]
 	scoreboard.text = text
 
-var player_units: Dictionary = {}  # player_id -> Array[Unit]
-var player_start_tiles: Dictionary = {}  # player_id -> Tile
-const HUMAN_PLAYER_ID = 0  # player 0 is the human
 
 func _spawn_starting_units() -> void:
 	var units_container = get_node_or_null("World/Units")
@@ -735,7 +740,7 @@ func _setup_training() -> void:
 	add_child(training_manager)
 	training_manager.game_manager = self
 	training_manager.world_generator = tile_map
-	
+
 	# Disable unnecessary visuals in training mode
 	if training_manager.is_headless:
 		RenderingServer.render_loop_enabled = false
@@ -758,11 +763,11 @@ func create_settlement(position: Vector2, player_id: int) -> Node:
 	settlement.position = position
 	settlement.player_id = player_id
 	add_child(settlement)
-	
+
 	# Register with territory manager
 	if territory_manager:
 		territory_manager.register_settlement(settlement, player_id)
-	
+
 	return settlement
 
 func set_random_seed(seed_value: int) -> void:
@@ -796,14 +801,14 @@ func get_nearest_enemy(player_id: int) -> Node:
 	# Find nearest enemy settlement
 	var min_distance = INF
 	var nearest = null
-	
+
 	for child in get_children():
 		if child.has_method("get_player_id") and child.get_player_id() != player_id:
 			var dist = child.position.distance_to(get_player_position(player_id))
 			if dist < min_distance:
 				min_distance = dist
 				nearest = child
-	
+
 	return nearest
 
 func get_player_position(player_id: int) -> Vector2:
